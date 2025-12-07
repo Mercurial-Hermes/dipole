@@ -36,6 +36,20 @@ pub fn build(b: *std.Build) void {
     const simple_add_step = b.step("simple_add", "Install the simple_add executable");
     simple_add_step.dependOn(&install_simple_add.step);
 
+    const simple_add_infinite_loop = b.addExecutable(.{
+        .name = "simple_add_infinite_loop",
+        .target = target,
+        .optimize = optimize,
+    });
+    simple_add_infinite_loop.addCSourceFile(.{
+        .file = b.path("targets/c/simple_add_inf_loop.c"),
+        .flags = &.{"-g"},
+    });
+    simple_add_infinite_loop.linkLibC();
+    const install_simple_add_infinite_loop = b.addInstallArtifact(simple_add_infinite_loop, .{});
+    const simple_add_infinite_loop_step = b.step("simple_add_infinite_loop", "Install the simple_add_infinite_loop executable");
+    simple_add_infinite_loop_step.dependOn(&install_simple_add_infinite_loop.step);
+
     // dipole executables
     const dipole = b.addExecutable(.{
         .name = "dipole",
@@ -67,4 +81,18 @@ pub fn build(b: *std.Build) void {
 
     const build_exp_0_4_step = b.step("exp-0-4-trace-step", "Build experiment 0.4 (single-step trace)");
     build_exp_0_4_step.dependOn(&install_exp_0_4.step);
+
+    const exp_0_5 = b.addExecutable(.{
+        .name = "exp-0.5-trace-n-step",
+        .root_source_file = b.path("exp/0.5-trace-n-step/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exp_0_5.root_module.addImport("trace", trace_mod);
+
+    const install_exp_0_5 = b.addInstallArtifact(exp_0_5, .{});
+
+    const build_exp_0_5_n_step = b.step("exp-0-5-trace-n-step", "Build experiment 0.5 (mutli-step trace)");
+    build_exp_0_5_n_step.dependOn(&install_exp_0_5.step);
 }
