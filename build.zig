@@ -95,4 +95,16 @@ pub fn build(b: *std.Build) void {
 
     const build_exp_0_5_n_step = b.step("exp-0-5-trace-n-step", "Build experiment 0.5 (mutli-step trace)");
     build_exp_0_5_n_step.dependOn(&install_exp_0_5.step);
+
+    const exp_0_6 = b.addExecutable(.{
+        .name = "exp-0.6-pty-lldb-interactive",
+        .root_source_file = b.path("exp/0.6-pty-lldb-interactive/exp0_6.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const install_exp_0_6 = b.addInstallArtifact(exp_0_6, .{});
+
+    const build_exp_0_6_pty_lldb_interactive = b.step("exp-0-6-pty-lldb-interactive", "Build experiment 0.6 (pty-lldb-interactive)");
+    build_exp_0_6_pty_lldb_interactive.dependOn(&install_exp_0_6.step);
 }
