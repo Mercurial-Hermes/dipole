@@ -180,7 +180,7 @@ pub const LLDBDriver = struct {
 
         // timeout after ~3 seconds of no output
         var consecutive_would_block: u32 = 0;
-        const max_wait_iters: u32 = 300; // 300 * 10ms = 3 seconds
+        const max_wait_iters: u32 = 3000; // 300 * 10ms = 3 seconds
 
         while (true) {
             const n = std.posix.read(self.master_fd, &tmp) catch |err| switch (err) {
@@ -240,10 +240,14 @@ pub const LLDBDriver = struct {
         self: *LLDBDriver,
         mode: PromptMode,
     ) ![]const u8 {
-        // For now, both modes use the same logic.
-        // Later, BestEffortChunk will have a different implementation.
         _ = mode;
-        return try self.waitForPrompt();
+        return self.waitForPrompt() catch |err| switch (err) {
+            error.PromptTimeout => {
+                // Non-fatal: user probably clicked a dialog, or process is running.
+                return self.buffer.items;
+            },
+            else => return err,
+        };
     }
 
     /// Politely tell lldb to quit and reap the child.

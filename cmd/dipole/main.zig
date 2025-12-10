@@ -1,26 +1,26 @@
 const std = @import("std");
+const LLDBDriver = @import("lib").LLDBDriver;
 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Utility: Get username (used by process picker)
 fn getUserName(allocator: std.mem.Allocator) ![]const u8 {
     var env = try std.process.getEnvMap(allocator);
     defer env.deinit();
 
     const val = env.get("USER") orelse "unknown";
-
     if (std.mem.eql(u8, val, "unknown")) {
-        // static string literal, no need to free
         return val;
     }
-
-    // copy into allocator-owned memory that outlives env.deinit()
     return try allocator.dupe(u8, val);
 }
 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Interactive process picker (reuse your existing implementation)
 fn pickPidInteractive(allocator: std.mem.Allocator) !i32 {
     var cmd = std.ArrayList([]const u8).init(allocator);
     defer cmd.deinit();
 
     const user = try getUserName(allocator);
-    // Only the real username is heap-allocated; "unknown" is a static literal.
     defer if (!std.mem.eql(u8, user, "unknown")) allocator.free(user);
 
     try cmd.append("ps");
@@ -33,11 +33,10 @@ fn pickPidInteractive(allocator: std.mem.Allocator) !i32 {
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Inherit;
-
     try child.spawn();
 
-    var buf = std.ArrayList(u8).init(allocator);
-    defer buf.deinit();
+    var out_buf = std.ArrayList(u8).init(allocator);
+    defer out_buf.deinit();
 
     if (child.stdout) |pipe| {
         var reader = pipe.reader();
@@ -46,26 +45,22 @@ fn pickPidInteractive(allocator: std.mem.Allocator) !i32 {
         while (true) {
             const n = try reader.read(&tmp);
             if (n == 0) break;
-            try buf.appendSlice(tmp[0..n]);
+            try out_buf.appendSlice(tmp[0..n]);
         }
     }
 
     _ = try child.wait();
 
-    // iterate ps output lines
-    var iter = std.mem.splitScalar(u8, buf.items, '\n');
+    // Print the filtered process list
+    var iter = std.mem.splitScalar(u8, out_buf.items, '\n');
     while (iter.next()) |line| {
         if (line.len == 0) continue;
         if (std.mem.indexOf(u8, line, "??") != null) continue;
         try std.io.getStdOut().writer().print("{s}\n", .{line});
     }
 
-    // Prompt user for PID
-    std.debug.print(
-        "\n[Dipole] Enter PID to attach (empty to cancel): ",
-        .{},
-    );
-
+    // Prompt for PID
+    std.debug.print("\n[Dipole] Enter PID to attach (empty = cancel): ", .{});
     var stdin_reader = std.io.getStdIn().reader();
     var buf_in: [64]u8 = undefined;
 
@@ -75,127 +70,168 @@ fn pickPidInteractive(allocator: std.mem.Allocator) !i32 {
     const trimmed = std.mem.trim(u8, line, " \t\r\n");
     if (trimmed.len == 0) return error.InvalidArguments;
 
-    const pid = try std.fmt.parseInt(i32, trimmed, 10);
-    return pid;
+    return try std.fmt.parseInt(i32, trimmed, 10);
 }
 
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Pretty-print LLDB output from driver buffer
+fn printLLDBOutput(output: []const u8) !void {
+    const stdout = std.io.getStdOut().writer();
+    try stdout.writeAll(output);
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Dipole REPL
+fn replLoop(driver: *LLDBDriver) !void {
+    var stdin_reader = std.io.getStdIn().reader();
+    var input_buf: [512]u8 = undefined;
+
+    const stdout = std.io.getStdOut().writer();
+
+    while (true) {
+        try stdout.writeAll("dipole> ");
+        const maybe_line = try stdin_reader.readUntilDelimiterOrEof(&input_buf, '\n');
+        if (maybe_line == null) break;
+
+        const raw = std.mem.trim(u8, maybe_line.?, " \t\r\n");
+        if (raw.len == 0) continue;
+
+        // Built-in dipole commands
+        if (std.mem.eql(u8, raw, "quit")) {
+            try stdout.writeAll("[Dipole] Shutting down...\n");
+            try driver.shutdown();
+            return;
+        } else if (std.mem.eql(u8, raw, "help")) {
+            try stdout.writeAll(
+                \\Dipole REPL Commands:
+                \\  help            : Show this help
+                \\  step            : lldb 'step'
+                \\  next            : lldb 'next'
+                \\  continue        : lldb 'continue'
+                \\  regs            : lldb 'register read'
+                \\  bt              : lldb 'bt'
+                \\  lldb <cmd>      : Send raw command to LLDB
+                \\  quit            : Exit dipole and terminate lldb
+                \\
+            );
+            continue;
+        } else if (std.mem.eql(u8, raw, "step")) {
+            try driver.sendLine("step");
+        } else if (std.mem.eql(u8, raw, "next")) {
+            try driver.sendLine("next");
+        } else if (std.mem.eql(u8, raw, "continue")) {
+            try driver.sendLine("continue");
+            // DO NOT wait for prompt here — program is running.
+            try stdout.writeAll("[Dipole] Program continued. Waiting for stop event.\n");
+            continue; // return to REPL immediately
+        } else if (std.mem.eql(u8, raw, "regs")) {
+            try driver.sendLine("register read");
+        } else if (std.mem.eql(u8, raw, "bt")) {
+            try driver.sendLine("bt");
+        } else {
+            // Raw LLDB commands: "lldb print 1+2"
+            if (std.mem.startsWith(u8, raw, "lldb ")) {
+                const cmd = std.mem.trimLeft(u8, raw["lldb ".len..], " ");
+                try driver.sendLine(cmd);
+            } else {
+                try stdout.writeAll("[Dipole] Unknown command. Try 'help'.\n");
+                continue;
+            }
+        }
+
+        // Read output
+        const out = try driver.readUntilPrompt(.LldbPrompt);
+        try printLLDBOutput(out);
+    }
+}
+
+/// ─────────────────────────────────────────────────────────────────────────────
+/// Main entrypoint
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
+
     const allocator = gpa.allocator();
-    var attach_cmd: ?[]u8 = null;
 
-    var args_it = std.process.args();
-    _ = args_it.next();
+    var args = std.process.args();
+    _ = args.next(); // skip executable name
 
-    var attach_mode = false;
-    var pid: i32 = 0;
+    const stdout = std.io.getStdOut().writer();
 
-    const first = args_it.next() orelse {
-        std.debug.print("Usage: dipole-play <path-to-target> | --pid [pid]\n", .{});
-        return error.InvalidArguments;
+    const subcmd = args.next() orelse {
+        // Default: pick process + attach
+        const pid = try pickPidInteractive(allocator);
+        try stdout.print("[Dipole] Attaching to PID {d}...\n", .{pid});
+
+        var driver = try LLDBDriver.initAttach(allocator, pid);
+        defer driver.deinit();
+
+        _ = try driver.waitForPrompt();
+        try stdout.writeAll("[Dipole] Attached. Entering REPL.\n\n");
+
+        try replLoop(&driver);
+        return;
     };
 
-    var target: []const u8 = first;
-
-    if (std.mem.eql(u8, first, "--pid")) {
-        if (args_it.next()) |pid_arg| {
-            // Case 1: `--pid 1234`
-            pid = try std.fmt.parseInt(i32, pid_arg, 10);
-            attach_mode = true;
-        } else {
-            // Case 2: `--pid` with no PID → process picker
-            pid = try pickPidInteractive(allocator);
-            attach_mode = true;
-        }
-    } else {
-        // Launch mode: first arg is the binary path
-        target = first;
+    // ───── dipole ps
+    if (std.mem.eql(u8, subcmd, "ps")) {
+        _ = try pickPidInteractive(allocator);
+        return;
     }
 
-    var cmd = std.ArrayList([]const u8).init(allocator);
-    defer cmd.deinit();
+    // ───── dipole attach <pid>
+    if (std.mem.eql(u8, subcmd, "attach")) {
+        const pid_str = args.next() orelse {
+            return error.InvalidArguments;
+        };
+        const pid = try std.fmt.parseInt(i32, pid_str, 10);
 
-    try cmd.append("lldb");
-    try cmd.append("-b");
+        try stdout.print("[Dipole] Attaching to PID {d}...\n", .{pid});
 
-    if (attach_mode) {
-        try cmd.append("-o");
-        attach_cmd = try std.fmt.allocPrint(allocator, "attach --pid {d}", .{pid});
-        try cmd.append(attach_cmd.?);
-        try cmd.append("-o");
-        try cmd.append("bt");
-    } else {
-        try cmd.append("-o");
-        try cmd.append("breakpoint set -n main");
-        try cmd.append("-o");
-        try cmd.append("run");
-        try cmd.append("-o");
-        try cmd.append("bt");
-        try cmd.append("--");
-        try cmd.append(target);
+        var driver = try LLDBDriver.initAttach(allocator, pid);
+        defer driver.deinit();
+
+        _ = try driver.waitForPrompt();
+        try stdout.writeAll("[Dipole] Attached. Entering REPL.\n\n");
+
+        try replLoop(&driver);
+        return;
     }
 
-    var child = std.process.Child.init(cmd.items, allocator);
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-    //child.stdout_behavior = .Inherit;
-    //child.stderr_behavior = .Inherit;
+    // ───── dipole run <exe>
+    if (std.mem.eql(u8, subcmd, "run")) {
+        const exe = args.next() orelse {
+            return error.InvalidArguments;
+        };
 
-    try child.spawn();
+        try stdout.print("[Dipole] Launching {s} under LLDB...\n", .{exe});
 
-    // now LLDB has copied argv internally; we can free the string
-    if (attach_cmd) |ac| {
-        allocator.free(ac);
+        var driver = try LLDBDriver.initLaunch(allocator, exe, &.{});
+        defer driver.deinit();
+
+        const banner = try driver.waitForPrompt();
+        try printLLDBOutput(banner);
+
+        try driver.sendLine("breakpoint set -n main");
+        const bp_out = try driver.readUntilPrompt(.LldbPrompt);
+        try printLLDBOutput(bp_out);
+
+        try driver.sendLine("run");
+        const run_out = try driver.readUntilPrompt(.LldbPrompt);
+        try printLLDBOutput(run_out);
+
+        try stdout.writeAll("[Dipole] Program launched and stopped at main. Entering REPL.\n\n");
+
+        try replLoop(&driver);
+        return;
     }
 
-    var child_output = std.ArrayList(u8).init(allocator);
-    defer child_output.deinit();
-
-    if (child.stdout) |stdout_pipe| {
-        var reader = stdout_pipe.reader();
-        var buf: [4096]u8 = undefined;
-        while (true) {
-            const n = try reader.read(&buf);
-            if (n == 0) break;
-            const slice = buf[0..n];
-            try std.io.getStdOut().writer().writeAll(slice);
-            try child_output.appendSlice(slice);
-        }
-    }
-
-    const term = try child.wait();
-
-    var iter = std.mem.splitScalar(u8, child_output.items, '\n');
-    var user_frames = std.ArrayList([]const u8).init(allocator);
-    defer user_frames.deinit();
-    var system_frames = std.ArrayList([]const u8).init(allocator);
-    defer system_frames.deinit();
-
-    const frame_tag = "frame #";
-    while (iter.next()) |line| {
-        if (std.mem.indexOf(u8, line, frame_tag) != null) {
-            if (std.mem.indexOf(u8, line, "dyld`") != null) {
-                try system_frames.append(line);
-            } else {
-                try user_frames.append(line);
-            }
-        }
-    }
-
-    std.debug.print("\n[Dipole] lldb exited with {any}\n", .{term});
-
-    std.debug.print("\n[Dipole] Summary\n", .{});
-
-    if (attach_mode) {
-        std.debug.print("[Dipole] Attached to PID: {d}\n", .{pid});
-    }
-
-    if (user_frames.items.len > 0) {
-        std.debug.print("[Dipole] Top frame:\n  {s}\n", .{user_frames.items[0]});
-    }
-
-    std.debug.print("[Dipole] User frames: {d}\n", .{user_frames.items.len});
-    std.debug.print("[Dipole] System frames hidden: {d}\n", .{system_frames.items.len});
+    // Unknown subcommand
+    try stdout.writeAll(
+        "Usage:\n" ++
+            "  dipole              (process picker + attach)\n" ++
+            "  dipole ps           (list processes)\n" ++
+            "  dipole attach <pid> (attach to running process)\n" ++
+            "  dipole run <exe>    (launch executable)\n",
+    );
 }
