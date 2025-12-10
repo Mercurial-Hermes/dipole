@@ -64,6 +64,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    dipole.root_module.addImport("lib", lib_mod);
+
     const install_dipole = b.addInstallArtifact(dipole, .{});
     const dipole_step = b.step("dipole", "Install the dipole executable");
     dipole_step.dependOn(&install_dipole.step);
