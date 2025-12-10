@@ -1,6 +1,6 @@
 # Dipole — Project State (Authoritative Snapshot)
 
-*Last updated: 2025-12-08*
+*Last updated: 2025-12-10*
 
 This file provides the **single source of truth** for Dipole’s current architecture, capabilities, and roadmap.  
 Use it to quickly sync ChatGPT or any collaborator into the project.
@@ -9,44 +9,86 @@ Use it to quickly sync ChatGPT or any collaborator into the project.
 
 ## 1. Vision Summary
 
-Dipole is a **deeply pedagogical debugger and performance exploration tool** focused on:
+Dipole is a **pedagogical debugger**, a tool that reveals the internal workings of program execution with clarity and respect for the learner.
 
-- Clear, intuitive stepping and tracing
-- Illuminating low-level execution for systems programmers (Zig, C, Rust)
-- Apple Silicon first, but not Apple Silicon only
-- Designed with clarity, minimalism, and educational value at the core
+Key elements of the vision:
+  - **Understanding-first**, not tool-first
+  - A debugger that teaches
+  - Modern, minimal, elegantly structured
+  - Apple Silicon as the initial “flagship architecture”
+  - Tight integration with LLDB initially, later a standalone debugger
+ 
+Dipole aims to serve:
+  - junior systems programmers
+  - university students
+  - Zig / C / Rust developers
+  - anyone who wants to understand the machine, not just use it
 
-Dipole is **not** a replacement for LLDB.
-It is a *human-friendly layer* over LLDB and, eventually, a full debugger of its own.
+Dipole is not designed to replace LLDB.
+It is designed to **sit above LLDB** and eventually beside or beyond it, providing a conceptual on-ramp and ergonomic power tools.
 
 ---
 
 ## 2. Current Architecture Overview
 
-### Modules & Responsibilities
+Dipole is transitioning from experiment-driven prototyping into a modular architecture under `lib/`.
 
-- **CLI entrypoints**
-  Located in `exp/`, each experiment is a prototype to test an idea and generate insight.
-- **LLDBDriver**
-  A growing subsystem that:
-    - Spawns and controls LLDB as a child process
-  - Currently supports:
-    - attach
-    - detach
-    - register read pc
-    - stepi
-  - Has two operating modes:
-    - **Batch mode** (fully working): run LLDB commands, capture output once, exit
-    - **Interactive mode (target state):**
-      - **Backed by a pseudo-terminal (PTY)**
-      - Allows LLDB to emit its normal prompt and behave interactively
-      - Needed for incremental stepping, sustained sessions, REPL-like operation
+**Core Modules**
 
-- **Trace System**
-Used for experiment-driven understanding of execution flow:
+**PTY Subsystem** — `pty.zig`
+
+Responsible for:
+  - Allocating master/slave PTY
+  - Setting CLOEXEC and non-blocking modes
+  - Providing a safe close() helper
+  - Correct behaviour on macOS (Darwin PTY semantics)
+
+PTY is now the _foundation_ of interactive debugging, replacing pipe-based experiments.
+
+**LLDBDriver** — `LLDBDriver.zig`
+
+This is the beating heart of Dipole MVP 0.1.
+
+Capabilities (as of Exp 0.7):
+  - Spawn LLDB in interactive mode via PTY
+  - Track LLDB's PID
+  - Attach to a target PID
+  - Launch a binary under LLDB
+  - Send commands (`sendLine`)
+  - Read output deterministically (`readUntilPrompt`)
+  - Detect LLDB prompt reliably
+  - Shutdown cleanly
+  - Deallocate resources (`deinit`)
+  - Check process health (`isAlive`)
+
+This subsystem is **fully test-driven** (11 tests), ensuring stability across Zig or OS changes.
+
+LLDBDriver is now stable enough to be used by:
+  - the REPL
+  - the future Dipole CLI
+  - future pedagogical modules
+
+**Trace System**
+
+A simple but foundational model used in earlier experiments:
   - `TraceSnapshot { pc, timestamp_ns }`
   - `TraceStep { before, after }`
   - `pcDeltaBytes()`
+
+This system will integrate with LLDBDriver for richer stepping introspection.
+
+**Dipole REPL (Experiment 0.7)**
+
+A working REPL now exists with:
+  - startup banner
+  - attach command
+  - passthrough LLDB commands
+  - stepping
+  - register introspection
+  - error handling
+  - prompt-based LLDB IO
+
+This is the **first interactive face** of Dipole.
 
 ---
 
@@ -59,96 +101,118 @@ Used for experiment-driven understanding of execution flow:
 | exp0.3 | ✓ | Stack frames |
 | exp0.4 | ✓ | Single-step trace (before/after PC) |
 | exp0.5 | ✓ | Multi-step trace (batch) |
-| exp0.6 | in prog | Multi-step trace; batch LLDB; next goal: PTY-backed LLDBDriver |
+| exp0.6 | ✓ | PTY-backed LLDB spawning & interactive IO |  
+| exp0.7 | ✓ | Fully implemented LLDBDriver + REPL |
 
 ---
 
 ## 4. Known Challenges
 
-**LLDB prompt suppression**
-LLDB **disables its REPL prompt** unless connected to a TTY.
-This makes true interactive control impossible with plain pipes.
+**LLDB Prompt Behaviour**
 
-**Need for PTY**
-Correct approach:
-- `call posix_openpt()`
-- `grantpt()`
-- `unlockpt()`
-- `ptsname()`
-- give LLDB the **slave PTY** as its stdin/stdout/stderr
+LLDB suppresses its REPL prompt unless connected to a TTY.
+**PTY usage is required** for correct interactive behaviour.
 
-**Deadlock hazards**
-On macOS/Apple Silicon:
-- Pipe-based blocking reads can deadlock
-- PTY requires **non-blocking I/O + poll/kevent/select** strategy
+**macOS Non-blocking IO**
 
-**LLDBDriver API still unstable**
-We need:
-  - clear command submission
-  - defined lifetime model
-  - robust read loop
-  - error handling
-  - “expect prompt” logic
+Darwin PTYs require:
+  - non-blocking reads
+  - timeout loops
+  - careful prompt detection
+
+**Potential LLDB Quirks**
+
+  - prompt sometimes lags without flush
+  - certain commands emit multi-phase outputs
+  - signal handling differs between attach and launch flows
+
+**Next Layer Complexity**
+
+LLDBDriver is foundational, but the CLI and TUI layers will need to:
+  - parse LLDB output more intelligently
+  - build Dipole-native views (register view, PC delta, disassembly pane)
+  - handle stepping visuals and educational messages
 
 ---
 
 ## 5. Next Priorities (Authoritatively Ordered)
 
-1.  **Complete PTY-backed LLDBDriver (exp0.6)**
-    Goals:
-    - Spawn LLDB connected to a PTY
-    - Read from PTY without blocking
-    - Detect the LLDB prompt reliably
-    - Execute a simple REPL loop:
-        - launch LLDB
-        - wait for prompt
-        - send `help`
-        - read response
-        - exit
+1. **Integrate LLDBDriver into the main Dipole CLI**
 
-2.  **Introduce async-safe, incremental output reading**
-    - Switch from blocking `.reader().readAll()` to:
-      - non-blocking fd
-      - poll loop
-      - accumulate buffer until prompt detected
+  - unify REPL code into cmd/dipole
+  - support: `dipole repl`, `dipole attach <pid>`, `dipole help`
+  - robust error messages
 
-3.  **Define a stable LLDBDriver interface**
-    Rough future API:
-    ```zig
-    const LLDBDriver = struct {
-        pub fn spawn() !LLDBDriver;
-        pub fn send(self: *LLDBDriver, cmd: []const u8) !void;
-        pub fn readUntilPrompt(self: *LLDBDriver, allocator: Allocator) ![]u8;
-        pub fn step(self: *LLDBDriver) !TraceStep;
-    };
-    ```
-    
-4.  **Introduce Session abstraction**
-    A <span style="background-color: grey;">“Dipole Session”.</span> will:
-    - record commands
-    - record outputs
-    - timestamp everything
-    - feed data into dipoledb eventually
+2. **Surfaces core LLDB functionality in a Dipole style**
 
-5.  **MVP 0.1 Minimal CLI**
-   - `dipole attach <pid>`
-   - `dipole step`
-   - `dipole trace --n <N>`
-   
-6.  **Maintain dev-log**
-    Every experiment → cleaned write-up in `docs/dev-log/`
-    
-7.  **Long-Term Roadmap (High Level)**
-    - Introduce a lightweight UI (terminal-first, optional browser mode)
-    - Real-time performance sampling overlays
-    - BPF-style insights (as allowed on macOS)
-    - Integrate with dipoledb for structural recording of execution traces
-    - Cross-platform backend architecture abstraction
-    - Native Apple Silicon debugging engine (Mach-o parser + DWARF + ptrace/suspend/arm64 stepping)
+The REPL must offer value:
+
+  - pretty register read
+  - PC delta detection
+  - simplified disassembly view
+  - minimal but elegant formatting
+
+3. **Architecture Cleanup After Exp 0.7**
+Move modules from experiment folder into lib/core (done).
+
+4. **Begin Dipole Session abstraction**
+
+A Session will eventually store:
+  - commands
+  - outputs
+  - timestamps
+  - stepping history
+  - trace snapshots
+
+5. **MVP 0.1 Deliverable**
+
+- Dipole CLI with REPL
+- Attach/launch/step/read registers
+- Basic pedagogical overlays
+- Works best in Ghostty
+- Clear documentation
+
+6. **Maintain dev-log**
+Every experiment → concise, polished write-up in docs/dev-log/.
+
+7. **Longer-Term Roadmap**
+
+- Browser or Ghostty-enhanced UI layer
+- Visual execution traces
+- Instruction timeline view
+- Integration with dipole-dbg
+- Native arm64 stepping backend
+- Breaking free of LLDB
 
 ---
 
-## 8. How to Use This File
+6. **Long-Term Vision (High-Level Roadmap)**
+
+Dipole matures in three acts:
+
+**Act I — LLDB Frontend (Current Phase)**
+- teach fundamentals
+- wrap LLDB safely
+- build the REPL + educational UX
+- explore PTY, signals, registers, stepping
+
+**Act II — Dipole as a Debugging Engine**
+- Mach-O loader
+- DWARF reader
+- ptrace-based stepping
+- Dipole-driven breakpoints and tracepoints
+- performance overlays
+
+**Act III — Dipole as a Platform**
+- advanced TUI + graphical UI
+- Ghostty embedding
+- pedagogy-first debugger experience
+- cross-platform portability
+- Dipole as a "workbench" for learning systems programming
+
+---
+
+## 7. How to Use This File
 
 - Update sections 2–5 whenever architecture changes
 - Keep terse but complete

@@ -8,6 +8,12 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("lib/core/trace.zig"),
     });
 
+    const lib_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/debugger/LLDBDriver.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const simple = b.addExecutable(.{
         .name = "simple",
         .target = target,
@@ -62,12 +68,6 @@ pub fn build(b: *std.Build) void {
     const dipole_step = b.step("dipole", "Install the dipole executable");
     dipole_step.dependOn(&install_dipole.step);
 
-    // wire installs into the default install step so `zig build` produces zig-out
-    const install = b.getInstallStep();
-    install.dependOn(&install_simple.step);
-    install.dependOn(&install_simple_add.step);
-    install.dependOn(&install_dipole.step);
-
     const exp_0_4 = b.addExecutable(.{
         .name = "exp-0.4-trace-step",
         .root_source_file = b.path("exp/0.4-trace-step/main.zig"),
@@ -107,4 +107,34 @@ pub fn build(b: *std.Build) void {
 
     const build_exp_0_6_pty_lldb_interactive = b.step("exp-0-6-pty-lldb-interactive", "Build experiment 0.6 (pty-lldb-interactive)");
     build_exp_0_6_pty_lldb_interactive.dependOn(&install_exp_0_6.step);
+
+    const exp_0_7 = b.addExecutable(.{
+        .name = "exp-0.7-dipole-repl",
+        .root_source_file = b.path("exp/0.7-lldb-driver-api/exp0_7.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exp_0_7.root_module.addImport("lib", lib_mod);
+
+    const install_exp_0_7 = b.addInstallArtifact(exp_0_7, .{});
+
+    const build_exp_0_7_dipole_repl = b.step("exp-0-7-dipole-repl-interactive", "Build experiment 0.7 (dipole-repl-interactive)");
+    build_exp_0_7_dipole_repl.dependOn(&install_exp_0_7.step);
+
+    // wire installs into the default install step so `zig build` produces zig-out
+    const install = b.getInstallStep();
+    // simple C programs
+    install.dependOn(&install_simple.step);
+    install.dependOn(&install_simple_add.step);
+    install.dependOn(&install_simple_add_infinite_loop.step);
+
+    // main dipole executable
+    install.dependOn(&install_dipole.step);
+
+    // experiment executables
+    install.dependOn(&install_exp_0_4.step);
+    install.dependOn(&install_exp_0_5.step);
+    install.dependOn(&install_exp_0_6.step);
+    install.dependOn(&install_exp_0_7.step);
 }
