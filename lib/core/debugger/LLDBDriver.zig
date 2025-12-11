@@ -19,6 +19,13 @@ pub const LLDBDriver = struct {
     target_pid: c.pid_t,
     master_fd: std.posix.fd_t,
     buffer: std.ArrayList(u8),
+    state: DebuggerState = .Stopped,
+
+    pub const DebuggerState = enum {
+        Stopped,
+        Running,
+        Exited,
+    };
 
     pub const DriverError = error{
         SpawnInitFailed,
@@ -240,14 +247,98 @@ pub const LLDBDriver = struct {
         self: *LLDBDriver,
         mode: PromptMode,
     ) ![]const u8 {
-        _ = mode;
-        return self.waitForPrompt() catch |err| switch (err) {
-            error.PromptTimeout => {
-                // Non-fatal: user probably clicked a dialog, or process is running.
-                return self.buffer.items;
-            },
-            else => return err,
+        const prompt = "(lldb) ";
+        var tmp: [1024]u8 = undefined;
+
+        // Only clear buffer at the start of LldbPrompt mode
+        if (mode == .LldbPrompt) {
+            self.buffer.clearRetainingCapacity();
+        }
+
+        // timeout for "best effort"
+        var consecutive_would_block: u32 = 0;
+        const max_iters: u32 = switch (mode) {
+            .LldbPrompt => 3000, // ~3 sec
+            .BestEffortChunk => 50, // ~0.5 sec
         };
+
+        while (true) {
+            const n = std.posix.read(self.master_fd, &tmp) catch |err| switch (err) {
+                error.WouldBlock => {
+                    consecutive_would_block += 1;
+                    if (consecutive_would_block >= max_iters) {
+                        return self.buffer.items;
+                    }
+                    std.time.sleep(10_000_000);
+                    continue;
+                },
+                else => return DriverError.ReadFailed,
+            };
+
+            consecutive_would_block = 0;
+
+            if (n == 0) {
+                // EOF → LLDB probably exited
+                self.state = .Exited;
+                return self.buffer.items;
+            }
+
+            try self.buffer.appendSlice(tmp[0..n]);
+
+            const output = self.buffer.items;
+
+            if (DebugLLDB) {
+                std.debug.print("READ CHUNK:\n{s}\n---\n", .{output});
+            }
+
+            // Detect inferior exit
+            if (outputIndicatesExit(output)) {
+                if (DebugLLDB) std.debug.print("DETECTED EXIT IN OUTPUT\n", .{});
+                self.state = .Exited;
+            }
+
+            // If waiting for LLDB prompt
+            if (mode == .LldbPrompt and std.mem.endsWith(u8, output, prompt)) {
+                // ───────────────────────────────────────────────
+                // GRACE WINDOW: keep reading small chunks briefly
+                // to pick up trailing exit text printed *after*
+                // the (lldb) prompt.
+                // ───────────────────────────────────────────────
+                var grace_iters: u32 = 10;
+                while (grace_iters > 0) {
+                    const n2 = std.posix.read(self.master_fd, &tmp) catch |err| switch (err) {
+                        error.WouldBlock => {
+                            std.time.sleep(10_000_000); // 10ms
+                            grace_iters -= 1;
+                            continue;
+                        },
+                        else => return DriverError.ReadFailed,
+                    };
+
+                    if (n2 == 0) break;
+
+                    try self.buffer.appendSlice(tmp[0..n2]);
+                    const out2 = self.buffer.items;
+
+                    if (DebugLLDB) {
+                        std.debug.print("GRACE READ:\n{s}\n---\n", .{out2});
+                    }
+
+                    if (outputIndicatesExit(out2)) {
+                        if (DebugLLDB) std.debug.print("EXIT DETECTED DURING GRACE WINDOW\n", .{});
+                        self.state = .Exited;
+                    }
+                }
+
+                // Return everything we captured
+                // If exit was detected, preserve Exited state.
+                // Otherwise LLDB is simply waiting at a prompt.
+                if (self.state != .Exited) {
+                    self.state = .Stopped;
+                }
+                return self.buffer.items;
+            }
+        }
     }
 
     /// Politely tell lldb to quit and reap the child.
@@ -275,6 +366,21 @@ pub const LLDBDriver = struct {
         // If result.pid == 0 → child is still running
         // If result.pid == self.lldb_pid → child exited
         return result.pid == 0;
+    }
+
+    pub fn interrupt(self: *LLDBDriver) !void {
+        // macOS LLDB receives ^C via writing ASCII ETX (0x03) to stdin
+        const sig = "\x03";
+        _ = try std.posix.write(self.master_fd, sig);
+    }
+
+    fn outputIndicatesExit(out: []const u8) bool {
+        const has_process = std.mem.containsAtLeast(u8, out, 1, "Process");
+        const has_exited = std.mem.containsAtLeast(u8, out, 1, "exited");
+        const has_status = std.mem.containsAtLeast(u8, out, 1, "exited with status");
+        const has_normal = std.mem.containsAtLeast(u8, out, 1, "exited normally");
+
+        return has_status or has_normal or (has_process and has_exited);
     }
 };
 
@@ -439,4 +545,39 @@ test "LLDBDriver: deinit frees buffer and leaves struct inert" {
     // The pointer *must* have changed or become null:
     // i.e. the memory was deallocated.
     try std.testing.expect(driver.buffer.items.ptr != old_items_ptr);
+}
+
+test "LLDBDriver: readUntilPrompt detects inferior exit and updates state" {
+    const allocator = std.testing.allocator;
+
+    // Use /usr/bin/true which exits instantly with status 0.
+    var driver = try LLDBDriver.initLaunch(allocator, "/usr/bin/true", &.{});
+    defer driver.buffer.deinit();
+
+    const tmp_exe = "/tmp/dipole_slow_exit";
+    const cc = "/usr/bin/cc";
+
+    var child = std.process.Child.init(&.{ cc, "tests/slow_exit.c", "-o", tmp_exe }, allocator);
+    try child.spawn();
+    _ = try child.wait();
+
+    // Sync with startup banner "(lldb)"
+    _ = try driver.waitForPrompt();
+
+    // Run the program
+    try driver.sendLine("run");
+
+    _ = try driver.readUntilPrompt(.LldbPrompt);
+
+    // Now ask LLDB for status explicitly
+    try driver.sendLine("process status");
+    const status = try driver.readUntilPrompt(.LldbPrompt);
+
+    // Output MUST contain the "exited with status" text from LLDB
+    try std.testing.expect(std.mem.containsAtLeast(u8, status, 1, "exited with status"));
+
+    // Driver state must now be Exited
+    try std.testing.expect(driver.state == .Exited);
+
+    try driver.shutdown();
 }

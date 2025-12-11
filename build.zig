@@ -1,5 +1,39 @@
 const std = @import("std");
 
+fn addSimpleProgram(
+    b: *std.Build,
+    name: []const u8,
+    source: []const u8,
+    is_c: bool,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) !*std.Build.Step {
+    const exe = b.addExecutable(.{
+        .name = name,
+        .target = target,
+        .optimize = optimize,
+    });
+
+    if (is_c) {
+        exe.addCSourceFile(.{
+            .file = b.path(source),
+            .flags = &.{"-g"},
+        });
+        exe.linkLibC();
+    } else {
+        exe.root_module.root_source_file = b.path(source);
+    }
+
+    const install_exe = b.addInstallArtifact(exe, .{});
+
+    const step = b.step(name, "Build simple program");
+    step.dependOn(&install_exe.step);
+
+    b.getInstallStep().dependOn(&install_exe.step);
+
+    return step;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -139,4 +173,19 @@ pub fn build(b: *std.Build) void {
     install.dependOn(&install_exp_0_5.step);
     install.dependOn(&install_exp_0_6.step);
     install.dependOn(&install_exp_0_7.step);
+
+    _ = try addSimpleProgram(b, "exit_0_c", "targets/c/exit_0.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "exit_42_c", "targets/c/exit_42.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "exit_0_zig", "targets/zig/exit_0.zig", false, target, optimize);
+    _ = try addSimpleProgram(b, "exit_42_zig", "targets/zig/exit_42.zig", false, target, optimize);
+
+    _ = try addSimpleProgram(b, "segfault_c", "targets/c/segfault.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "segfault_zig", "targets/zig/segfault.zig", false, target, optimize);
+
+    _ = try addSimpleProgram(b, "stdout_no_newline_c", "targets/c/stdout_no_newline.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "stdout_newline_c", "targets/c/stdout_newline.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "stdout_flush_c", "targets/c/stdout_flush.c", true, target, optimize);
+    _ = try addSimpleProgram(b, "stdout_no_newline_zig", "targets/zig/stdout_no_newline.zig", false, target, optimize);
+    _ = try addSimpleProgram(b, "stdout_newline_zig", "targets/zig/stdout_newline.zig", false, target, optimize);
+    _ = try addSimpleProgram(b, "stdout_flush_zig", "targets/zig/stdout_flush.zig", false, target, optimize);
 }
