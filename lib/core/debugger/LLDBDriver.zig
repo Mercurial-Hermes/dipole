@@ -1,5 +1,6 @@
 const std = @import("std");
 const pty = @import("./pty.zig");
+const Log = @import("log");
 
 const c = @cImport({
     @cInclude("stdlib.h");
@@ -108,6 +109,7 @@ pub const LLDBDriver = struct {
     ) !LLDBDriver {
         var pty_pair = try pty.createPtyPair();
         errdefer _ = pty_pair.close();
+        Log.log("LLDBDriver: PTY pair created", .{});
 
         var actions: c.posix_spawn_file_actions_t = undefined;
         if (c.posix_spawn_file_actions_init(&actions) != 0)
@@ -149,6 +151,8 @@ pub const LLDBDriver = struct {
         );
         if (spawn_err != 0)
             return DriverError.SpawnFailed;
+
+        Log.log("LLDBDriver: spawned lldb with pid {}", .{child_pid});
 
         // Clean up
         _ = std.posix.close(pty_pair.slave);
@@ -205,6 +209,9 @@ pub const LLDBDriver = struct {
             // Reset timeout counter on successful read
             consecutive_would_block = 0;
 
+            Log.log("waitForPrompt: read() returned {} bytes", .{n});
+            Log.log("waitForPrompt: chunk = '{s}'", .{tmp[0..n]});
+
             if (n == 0) {
                 // EOF from LLDB - it probably exited early
                 return DriverError.ChildExitedEarly;
@@ -228,6 +235,7 @@ pub const LLDBDriver = struct {
 
         const data = buf.items;
 
+        Log.log("LLDBDriver sendLine: line = '{s}'", .{line});
         var total_written: usize = 0;
         while (total_written < data.len) {
             const n = std.posix.write(self.master_fd, data[total_written..]) catch {
@@ -240,6 +248,7 @@ pub const LLDBDriver = struct {
 
             total_written += n;
         }
+        Log.log("LLDBDriver sendLine: wrote '{d}'", .{total_written});
     }
 
     /// Read all available output until we hit the prompt (or timeout).
@@ -247,6 +256,7 @@ pub const LLDBDriver = struct {
         self: *LLDBDriver,
         mode: PromptMode,
     ) ![]const u8 {
+        Log.log("LLDBDriver readUntilPrompt: entered", .{});
         const prompt = "(lldb) ";
         var tmp: [1024]u8 = undefined;
 
@@ -278,6 +288,7 @@ pub const LLDBDriver = struct {
             consecutive_would_block = 0;
 
             if (n == 0) {
+                Log.log("LLDBDriver readUntilPrompt: should I be in this while loop?", .{});
                 // EOF → LLDB probably exited
                 self.state = .Exited;
                 return self.buffer.items;
@@ -293,6 +304,7 @@ pub const LLDBDriver = struct {
 
             // Detect inferior exit
             if (outputIndicatesExit(output)) {
+                Log.log("LLDBDriver readUntilPrompt: inferior exit detected", .{});
                 if (DebugLLDB) std.debug.print("DETECTED EXIT IN OUTPUT\n", .{});
                 self.state = .Exited;
             }
@@ -336,9 +348,34 @@ pub const LLDBDriver = struct {
                 if (self.state != .Exited) {
                     self.state = .Stopped;
                 }
+                Log.log("LLDBDriver readUntilPrompt: returning {s}", .{self.buffer.items});
                 return self.buffer.items;
             }
         }
+    }
+
+    pub fn observeThreadList(self: *LLDBDriver, out: []const u8) void {
+        self.maybeUpdateTargetPidFromThreadList(out);
+    }
+
+    fn maybeUpdateTargetPidFromThreadList(self: *LLDBDriver, out: []const u8) void {
+        if (self.target_pid != -1) return;
+
+        // Typical first line: "Process 83876 stopped"
+        const needle = "Process ";
+        const idx = std.mem.indexOf(u8, out, needle) orelse return;
+
+        var it = out[idx + needle.len ..];
+
+        while (it.len > 0 and it[0] == ' ') it = it[1..];
+
+        var i: usize = 0;
+        while (i < it.len and std.ascii.isDigit(it[i])) : (i += 1) {}
+
+        if (i == 0) return;
+
+        const pid = std.fmt.parseInt(c.pid_t, it[0..i], 10) catch return;
+        self.target_pid = pid;
     }
 
     /// Politely tell lldb to quit and reap the child.

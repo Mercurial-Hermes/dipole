@@ -1,0 +1,106 @@
+lib/core/Tmux.zig           ← new tmux bootstrap
+lib/core/REPL.zig           ← replMode()
+lib/core/RegisterFile.zig   ← write/cleanup logic
+lib/core/RegsViewer.zig     ← runRegsViewer()
+lib/core/LLDBDriver.zig     ← already exists
+
+-- rebuild tmux bootstrap cleanly
+tmux new-session -d "dipole internal-repl <target>"
+tmux split-window -h "dipole regs-view"
+tmux select-pane -t 0
+tmux attach
+
+🪓 Step 3 — Rebuild REPL cleanly
+
+Remove from REPL:
+- pane killing logic
+- env var propagation
+- reg path discovery inside REPL
+- fallback paths
+- ghostty detection
+- argument reconstruction
+
+REPL should:
+- Create LLDBDriver.
+- Set breakpoint at main.
+- Launch.
+- Enter stepping loop.
+- Write register snapshot after each step.
+- Output REPL prompt.
+
+🪓 Step 4 — Right pane redraw loop
+
+We remove:
+- custom ANSI clearing,
+- one-off functions,
+- variable sleeps,
+- env propagation.
+
+pub fn regsViewLoop(path: []const u8) !void {
+    const out = std.io.getStdOut().writer();
+    while (true) {
+        try out.writeAll("\x1b[2J\x1b[H"); // clear screen
+        print file or "(waiting...)"
+        std.time.sleep(100 * std.time.ns_per_ms);
+    }
+}
+
+dipole run exe
+   ↓
+maybeBootstrapTmux
+   ↓
+tmux launches two panes:
+   left: REPL
+   right: RegsViewer watching RegisterFile
+
+
+
+🔥 Here’s the integration plan (Phase 2)
+
+We'll proceed in small, testable steps:
+
+1. Create a thin LLDB driver wrapper
+
+Minimal API: sendLine, readUntilPrompt, state, target_pid
+
+No PTY yet (we’ll add PTY in Phase 3)
+
+Keep this fake-ish until PTY layer is fully ready
+
+2. Write REPL loop that uses REPL.execute()
+
+We already designed the core logic. We integrate with real I/O.
+
+3. Write the new, small main.zig
+
+This replaces the huge previous one.
+
+Three modes:
+
+dipole run exe         → bootstrap tmux & attach
+dipole --repl-mode …   → REPL pane
+dipole --regs-view …   → RegsViewer pane
+
+4. Run an end-to-end test without LLDB
+
+We’ll simulate execution:
+
+Confirm panes open
+
+Confirm regs.txt updates
+
+Confirm REPL loop responds correctly
+
+5. Add LLDB + PTY in Phase 3
+
+This is where Dipole becomes a living debugger:
+
+PTY to drive LLDB interactively
+
+Non-blocking reads
+
+Predictable prompt detection
+
+Step/next/continue behavior validated inside REPL
+
+Register snapshots ON EVERY STATE CHANGE

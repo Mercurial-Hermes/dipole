@@ -42,11 +42,115 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("lib/core/trace.zig"),
     });
 
-    const lib_mod = b.createModule(.{
+    const args_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/Args.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const ansi_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/ansi.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const term_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/term.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const lldbdriver_mod = b.createModule(.{
         .root_source_file = b.path("lib/core/debugger/LLDBDriver.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    const log_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/Log.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    lldbdriver_mod.addImport("log", log_mod);
+
+    const tui_mod = b.createModule(.{
+        .root_source_file = b.path("lib/ui/tui.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    tui_mod.addImport("log", log_mod);
+    tui_mod.addImport("term", term_mod);
+
+    const tmux_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/Tmux.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    tmux_mod.addImport("log", log_mod);
+
+    const panes_mod = b.createModule(.{
+        .root_source_file = b.path("lib/ui/render/panes.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const regs_viewer_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/RegsViewer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    regs_viewer_mod.addImport("log", log_mod);
+    regs_viewer_mod.addImport("panes", panes_mod);
+    regs_viewer_mod.addImport("term", term_mod);
+    regs_viewer_mod.addImport("ansi", ansi_mod);
+
+    const repl_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/REPL.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    repl_mod.addImport("log", log_mod);
+
+    // Unit tests for mods (must run through build graph so module imports work)
+    const tui_tests = b.addTest(.{
+        .root_source_file = b.path("lib/ui/tui.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    tui_tests.root_module.addImport("log", log_mod);
+    tui_tests.root_module.addImport("term", term_mod);
+
+    const tui_test_step = b.step("test-tui", "Run Tui unit tests");
+    tui_test_step.dependOn(&tui_tests.step);
+
+    const repl_tests = b.addTest(.{
+        .root_source_file = b.path("lib/core/REPL.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    repl_tests.root_module.addImport("log", log_mod);
+
+    const repl_test_step = b.step("test-repl", "Run REPL unit tests");
+    repl_test_step.dependOn(&repl_tests.step);
+
+    const regs_view_tests = b.addTest(.{
+        .root_source_file = b.path("lib/core/RegsViewer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    regs_view_tests.root_module.addImport("log", log_mod);
+    regs_view_tests.root_module.addImport("panes", panes_mod);
+    regs_view_tests.root_module.addImport("term", term_mod);
+    regs_view_tests.root_module.addImport("ansi", ansi_mod);
+
+    const regs_view_step = b.step("test-regs-view", "Run Regs View unit tests");
+    regs_view_step.dependOn(&regs_view_tests.step);
+    // End Unit tests for mods
 
     const simple = b.addExecutable(.{
         .name = "simple",
@@ -98,11 +202,53 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    dipole.root_module.addImport("lib", lib_mod);
+    dipole.root_module.addImport("args", args_mod);
+    dipole.root_module.addImport("ansi", ansi_mod);
+    dipole.root_module.addImport("lldbdriver", lldbdriver_mod);
+    dipole.root_module.addImport("log", log_mod);
+    dipole.root_module.addImport("tui", tui_mod);
+    dipole.root_module.addImport("tmux", tmux_mod);
+    dipole.root_module.addImport("panes", panes_mod);
+    dipole.root_module.addImport("term", term_mod);
+    dipole.root_module.addImport("regsview", regs_viewer_mod);
+    dipole.root_module.addImport("repl", repl_mod);
 
     const install_dipole = b.addInstallArtifact(dipole, .{});
     const dipole_step = b.step("dipole", "Install the dipole executable");
     dipole_step.dependOn(&install_dipole.step);
+
+    //*** simple binary to view regs file and appear in right pane of a dipole tmux session
+    const dipole_regsview = b.addExecutable(.{
+        .name = "dipole-regsview",
+        .root_source_file = b.path("cmd/dipole-regsview/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    dipole_regsview.root_module.addImport("regsview", regs_viewer_mod);
+
+    const install_dipole_regsview = b.addInstallArtifact(dipole_regsview, .{});
+    const dipole_regsview_step = b.step("dipole-regsview", "Install the dipole-regsview helper");
+    dipole_regsview_step.dependOn(&install_dipole_regsview.step);
+
+    //***
+
+    // *** smoke test --no-tmux trying to catch regressions on a simple dipole session
+    const smoke_simple = b.addExecutable(.{
+        .name = "smoke_simple",
+        .root_source_file = b.path("tests/smoke_simple.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_smoke = b.addRunArtifact(smoke_simple);
+    run_smoke.addArg(b.getInstallPath(.bin, "dipole"));
+    run_smoke.addArg(b.getInstallPath(.bin, "simple"));
+    run_smoke.step.dependOn(&install_dipole.step);
+    run_smoke.step.dependOn(&install_simple.step);
+
+    const smoke_step = b.step("smoke", "Run Dipole smoke test (run --no-tmux simple)");
+    smoke_step.dependOn(&run_smoke.step);
+    // *** end smoke test
 
     const exp_0_4 = b.addExecutable(.{
         .name = "exp-0.4-trace-step",
@@ -151,7 +297,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exp_0_7.root_module.addImport("lib", lib_mod);
+    exp_0_7.root_module.addImport("lib", lldbdriver_mod);
 
     const install_exp_0_7 = b.addInstallArtifact(exp_0_7, .{});
 
@@ -167,6 +313,9 @@ pub fn build(b: *std.Build) void {
 
     // main dipole executable
     install.dependOn(&install_dipole.step);
+
+    //dipole-regsview helper
+    install.dependOn(&install_dipole_regsview.step);
 
     // experiment executables
     install.dependOn(&install_exp_0_4.step);
