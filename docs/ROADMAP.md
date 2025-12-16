@@ -1,139 +1,183 @@
 # 🚀 Dipole Roadmap
 
-A debugger, a teacher, and a node of understanding.
+_A debugger, a teacher, and a node of understanding_.
 
-Dipole is a native macOS debugger and learning platform for Apple Silicon. It exists to cultivate deep understanding of how computers work — through clear interfaces, guided exploration, and a supportive distributed community of learners.
+Dipole is a **pedagogical debugger** for Apple Silicon systems programming.
+It exists to cultivate deep understanding of program execution through clarity, structure, and carefully designed interfaces.
 
-This roadmap outlines Dipole’s evolution from MVP 0.1 to Dipole 1.0, including high-level milestones and long-term aspirations.
+This roadmap outlines Dipole’s evolution from **v0.1.0 (MVP)** toward **Dipole 1.0**, balancing practical utility with long-term ambition.
 
 ---
 
-## 🌱 Milestone 0 — MVP 0.1 (Interactive LLDB Wrapper)
-**Target:** January 2026  
-Dipole becomes alive — a functioning interactive debugger with a clean REPL and pedagogical foundations.
+## 🌱 Milestone 0 — v0.1.0 (MVP: Interactive LLDB Wrapper) ✅
+**Status**: Released
+**Tag**: v0.1.0
+Dipole became alive: a functioning interactive debugger with a clean REPL and solid foundations.
 
-**Goals**
-- PTY-driven LLDB interface with non-blocking IO
-- Stepping, breakpoints, register and memory read
-- Minimal visualization prototype (PC progression)
-- Foundational architecture: `LLDBDriver`, `DipoleREPL`, `DipoleRender`
+**Delivered**
+- PTY-driven LLDB interface with reliable prompt detection
+- Non-blocking IO on macOS (Darwin PTY semantics)
+- Stepping, continue, backtrace, register inspection
+- Raw LLDB passthrough for escape hatches
+- REPL-based interaction model
+- Test-driven `LLDBDriver` foundation
+- Experiments `exp0.1 → exp0.7` consolidated into stable code
 
-**Deliverables**
-- Tag: `mvp0.1`
-- Developer experience clear and documented
-- Experiments `exp0.1 → exp0.7` integrated into stable code
+v0.1.0 establishes Dipole as a **real, usable debugger wrapper**, suitable for early adopters and pedagogical exploration.
 
-## 🌿 Milestone 1 — MVP 0.2 (Tracing + Metal Foundations)
-**Target:** April 2026  
-Dipole transitions from a wrapper to a guided debugger.
+---
 
-**Goals**
-- Trace pipeline for PC, registers, stack snapshots
-- Metal visualization window: instruction stepping, register deltas, execution timeline
-- Internal separation of input loop, LLDB backend, visualization engine
-- Initial experiments with embedding Ghostty
+## 🌿 Milestone 1 — v0.2.0 (Pedagogical Debugger + tmux Screens)
+**Status:** In active development
+**Target:** Q1 2026
+**Tag:** v0.2.0
+Dipole evolves from a thin wrapper into a **guided, screen-oriented debugger** optimised for learning.
 
-**Deliverables**
-- First Dipole canvas animation
-- First tutorial challenge (“Step through a function prologue”)
-- Tag: `mvp0.2`
+### Core Theme
+**Screen real estate as pedagogy**
+v0.2.0 focuses on multi-pane workflows, clarity of state, and ergonomic insight — while continuing to wrap LLDB under the hood.
 
-## 🌾 Milestone 2 — MVP 0.3 (Dipole UI Shell)
-**Target:** July 2026  
-Dipole gains an identity of its own through a cohesive interface.
+### Goals
+- Brokered architecture:
+  - single controller owns LLDB PTY
+  - serialized command execution
+  - explicit session state (`Stopped / Running / Exited`)
+- tmux as a first-class UI surface
+  - Multiple panes driven by derived state:
+    - registers
+    - disassembly around PC
+    - “where am I” (PC, symbol, source)
+    - optional memory views
+- Stop-driven refresh model (on step / breakpoint / signal)
+- Expanded LLDB command surface:
+  - breakpoints lifecycle
+  - run / attach / restart / kill
+  - instruction stepping (si/ni/finish)
+  - thread and frame navigation
+- Clear failure semantics when LLDB exits
 
-**Goals**
-- Embedded Ghostty terminal (LLDB shell)
-- Metal visualization pane: stack frames, memory view, register tables
-- Split-view or tabbed architecture
-- Challenge definition file format
+### Deliverables
+- `v0.2.0-alpha` → broker skeleton + REPL client
+- `v0.2.0-beta` → tmux layouts + live viewer panes
+- `v0.2.0` → stable pedagogical workflows
+- Updated architecture and dev-log documentation
 
-**Deliverables**
-- First challenge pack (5–10 foundational challenges)
-- Themed UI
-- Tag: `mvp0.3`
+v0.2.0 is the first version where Dipole’s UX meaningfully exceeds raw LLDB for teaching and exploration.
 
-## 🌻 Milestone 3 — MVP 0.4 (Dipole Academy Foundations)
-**Target:** October 2026  
-Dipole becomes a dojo — a place to practice and understand systems programming.
+---
 
-**Goals**
-- In-app challenge browser with guided explanations and hints
-- Local progress tracking and bootcamp-ready mode for group learning
-- Community documentation
+## 🌾 Milestone 2 — v0.3.0 (Debugger Identity)
+**Target:** Mid 2026
+Dipole gains a stronger sense of identity and coherence as a debugger.
 
-**Deliverables**
-- “Systems Programming Foundations I” (20–30 challenges)
-- Soft launch of Dipole Academy
-- Tag: `mvp0.4`
+### Goals
+- Cohesive command language and help system
+- Stable pane layouts and navigation patterns
+- Register diffing, step deltas, and execution narratives
+- First structured “debugging lessons” designed explicitly for Dipole
 
-## 🌺 Milestone 4 — MVP 0.5 (dipole-dbg Begins)
-**Target:** March 2027  
-A long-term architectural milestone: Dipole starts moving beyond LLDB.
+## Deliverables
+- Canonical Dipole workflows documented
+- Early lesson packs that rely on Dipole features
+- Tag: `v0.3.0`
 
-**Goals**
-- Start implementing `dipole-dbg` backend
-- Attach, read registers, read memory, single-step
-- Unified abstraction for LLDB ↔ `dipole-dbg` switching
-- High-level backend design document
+---
 
-**Deliverables**
-- First working `dipole-dbg` stepping experiment
-- Tag: `mvp0.5`
+## 🌻 Milestone 3 — v0.4.0 (Dojo Integration Phase)
+**Target:** Late 2026
+Dipole becomes the **engine** powering a broader learning environment.
 
-## 🌸 Milestone 5 — 1.0 Candidate (Fully Integrated Learning Debugger)
-**Target:** December 2027  
-Dipole becomes a polished macOS application.
+### Goals
+- Tight integration with **Dojo** (separate native macOS app)
+- Lesson-driven debugging sessions
+- Reproducible debugging scenarios
+- Guided exploration tied to real binaries
 
-**Goals**
-- Full Ghostty integration
-- Full Metal visualization suite: trace timelines, memory map overlays, call graph visualization, stack frame animations, performance overlays
-- Dipole Academy Level I & II (60–80 challenges)
-- Bootcamp-ready infrastructure, website, documentation, and tutorial path
-- App Store packaging
+Dipole remains open-source and terminal-centric;
+Dojo provides the structured learning experience around it.
 
-**Deliverables**
-- Tag: `v1.0-rc`
-- Public preview with demo videos
+### Deliverables
+- Stable Dipole ↔ Dojo integration contract
+- “Systems Programming Foundations” course content
+- Tag: `v0.4.0`
 
-## 🏆 Milestone 6 — Dipole 1.0 Release
-**Target:** January 2028  
-A debugger. A learning platform. A distributed community of understanding.
+---
 
-**Goals**
-- Full stability and refinement with polished user experience
-- First global Dipole Bootcamp
-- Launch of the Dipole community
+## 🌺 Milestone 4 — v0.5.0 (dipole-dbg Experiments)
+**Target:** 2027
+Dipole begins the transition from wrapper to engine.
 
-**Deliverables**
+### Goals
+- Early `dipole-dbg` experiments:
+  - attach
+  - read registers
+  - read memory
+  - single-step
+- Unified abstraction for LLDB vs native backend
+- Deep documentation of Mach / AArch64 internals
+
+### Deliverables
+- First `dipole-dbg` stepping prototype
+- Public design notes and feasibility reports
+- Tag: `v0.5.0`
+
+---
+
+## 🌸 Milestone 5 — 1.0 Candidate (Integrated Learning Debugger)
+**Target**: Late 2027
+Dipole becomes a polished, end-to-end learning debugger.
+
+### Goals
+- Mature debugger workflows
+- Rich pedagogical overlays
+- Large, coherent lesson library
+- Optional graphical and Metal-based visualizations
+- Stable APIs and documentation
+
+### Deliverables
+- `v1.0-rc`
+- Public preview and recorded demonstrations
+
+---
+
+## 🏆 Milestone 6 — Dipole 1.0
+**Target:** 2028
+A debugger.
+A learning platform.
+A community built around understanding.
+
+### Deliverables
 - Tag: `v1.0`
-- Dipole 1.0 launch event
+- Long-term stability guarantees
+- Public launch of the Dipole ecosystem
 
-## 🔭 Beyond 1.0 — The Future
-**Dipole 2.0 (Debugger Evolution)**
+---
+
+## 🔭 Beyond 1.0 — The Long View
+### Debugger Evolution
 - Full `dipole-dbg` backend
-- Kernel debugging experiments
-- Remote debugging
-- JIT stepping and IR visualization
+- Advanced tracing and execution timelines
+- Performance and microarchitectural insight
+- Selective kernel and low-level debugging
 
-**Dipole as a Platform**
-- Plugin architecture for visualizers, challenge packs, teaching modules
-- Community-authored learning paths
-- Online shared traces (“Dipole Playgrounds”)
+### Dipole as a Platform
+- Extensible visualizers
+- Community-authored lesson packs
+- Shared debugging traces and “playgrounds”
 
-**Distributed Learning Movement**
-- Anonymous bootcamps; challenge-of-the-month
-- Mentorship circles
-- “Ask an Engineer” live sessions
-- A global culture centered around deep understanding and craftsmanship
+### A Learning Movement
+- Quiet, disciplined systems programming culture
+- Mentorship and deep-dive bootcamps
+- Global community focused on craftsmanship
+
+---
 
 ## 🧭 Roadmap Philosophy
-Dipole is guided by three principles:
-1. Understanding over complexity
-2. Pedagogy over features
-3. Depth over speed
+1. **Understanding over complexity**
+2. **Pedagogy over features**
+3. **Depth over speed**
 
 Dipole exists to help people learn how computers really work —
-to build a community of thinkers, explorers, and disciplined practitioners.
+not faster, not louder, but deeper.
 
-It is a tool, a teacher, and a quiet movement.
+---
