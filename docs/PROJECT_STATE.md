@@ -1,6 +1,8 @@
 # Dipole — Project State (Authoritative Snapshot)
 
-*Last updated: 2025-12-10*
+**Current released version: v0.1.0 (MVP)**
+
+*Last updated: 2025-12-16 — reflects v0.1.0 release state*
 
 This file provides the **single source of truth** for Dipole’s current architecture, capabilities, and roadmap.  
 Use it to quickly sync ChatGPT or any collaborator into the project.
@@ -29,7 +31,7 @@ It is designed to **sit above LLDB** and eventually beside or beyond it, providi
 
 ---
 
-## 2. Current Architecture Overview
+## 2. Current Architecture Overview (v0.1.0)
 
 Dipole is transitioning from experiment-driven prototyping into a modular architecture under `lib/`.
 
@@ -212,7 +214,21 @@ Dipole matures in three acts:
 
 ---
 
-## 7. How to Use This File
+## 7 Note on Future Versions
+
+This document intentionally describes the **v0.1.0** state of Dipole.
+
+Work toward **v0.2.0** introduces:
+- expanded debugger workflows
+- improved screen real estate via tmux
+- architectural changes (e.g. brokered control of LLDB)
+
+These changes are tracked separately in `ARCHITECTURE.md`, `ROADMAP.md`,
+and upcoming dev-log entries, and are not reflected here until released.
+
+---
+
+## 8. How to Use This File
 
 - Update sections 2–5 whenever architecture changes
 - Keep terse but complete
