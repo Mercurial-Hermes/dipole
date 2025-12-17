@@ -2,8 +2,8 @@ const std = @import("std");
 const LLDBDriver = @import("lldbdriver").LLDBDriver;
 const Log = @import("log");
 
-/// Controller-level truth about the session.
-/// (We keep this separate from LLDBDriver.state; driver is transport-ish, controller is policy-ish.)
+// NOTE: Controller, not LLDBDriver, owns lifecycle policy.
+// Driver may detect exit, but Controller decides what it means.
 pub const SessionState = union(enum) {
     Stopped,
     Running,
@@ -14,7 +14,7 @@ pub const Controller = struct {
     alloc: std.mem.Allocator,
     driver: *LLDBDriver,
 
-    state_: SessionState = .Stopped,
+    session_state: SessionState = .Stopped,
 
     /// Cheap serialization guard for Exp 1.1.
     /// Later becomes a mutex + queue when you add IPC/tmux clients.
@@ -30,13 +30,13 @@ pub const Controller = struct {
     }
 
     pub fn state(self: *const Controller) SessionState {
-        return self.state_;
+        return self.session_state;
     }
 
     /// Execute a raw LLDB command line (without trailing newline).
     /// Returns owned output (caller frees).
     pub fn execRaw(self: *Controller, cmd: []const u8) ![]u8 {
-        if (self.state_ == .Exited) return Error.SessionExited;
+        if (self.session_state == .Exited) return Error.SessionExited;
         if (self.in_flight) return Error.Busy;
 
         self.in_flight = true;
@@ -49,11 +49,11 @@ pub const Controller = struct {
         // Update controller session state.
         // We treat driver's Exited detection as a strong signal, but also fall back to parsing output.
         if (self.driver.state == .Exited or outputIndicatesExit(out_borrowed)) {
-            self.state_ = .{ .Exited = .{ .code = parseExitCode(out_borrowed) } };
+            self.session_state = .{ .Exited = .{ .code = parseExitCode(out_borrowed) } };
         } else {
             // Minimal policy for now: after a prompt, we’re stopped.
             // (Running state will matter more once we introduce async stop events + brokered clients.)
-            self.state_ = .Stopped;
+            self.session_state = .Stopped;
         }
 
         return try self.alloc.dupe(u8, out_borrowed);
