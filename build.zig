@@ -74,6 +74,15 @@ pub fn build(b: *std.Build) void {
 
     lldbdriver_mod.addImport("log", log_mod);
 
+    const controller_mod = b.createModule(.{
+        .root_source_file = b.path("lib/core/controller/Controller.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    controller_mod.addImport("log", log_mod);
+    controller_mod.addImport("lldbdriver", lldbdriver_mod);
+
     const tui_mod = b.createModule(.{
         .root_source_file = b.path("lib/ui/tui.zig"),
         .target = target,
@@ -150,6 +159,17 @@ pub fn build(b: *std.Build) void {
 
     const regs_view_step = b.step("test-regs-view", "Run Regs View unit tests");
     regs_view_step.dependOn(&regs_view_tests.step);
+
+    const controller_tests = b.addTest(.{
+        .root_source_file = b.path("lib/core/controller/Controller.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    controller_tests.root_module.addImport("log", log_mod);
+    controller_tests.root_module.addImport("lldbdriver", lldbdriver_mod);
+
+    const controller_step = b.step("test-controller", "Run Controller unit tests");
+    controller_step.dependOn(&controller_tests.step);
     // End Unit tests for mods
 
     const simple = b.addExecutable(.{
