@@ -88,6 +88,9 @@ There is no hidden or implicit state mutation.
 
 State is a *projection*, not a source of truth.
 
+Dipole records a total, immutable order of observed events.
+This order is authoritative even when multiple events occur simultaneously in physical time.
+
 ---
 
 ### Invariant 3 — Backend Independence
