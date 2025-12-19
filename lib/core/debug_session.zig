@@ -16,6 +16,12 @@ pub const DebugSession = struct {
         };
     }
 
+    pub fn initFromEvents(allocator: std.mem.Allocator, events: []const Event) !DebugSession {
+        var session = DebugSession.init(allocator);
+        try session.events.appendSlice(allocator, events);
+        return session;
+    }
+
     pub fn deinit(self: *DebugSession) void {
         self.events.deinit(self.allocator);
     }
