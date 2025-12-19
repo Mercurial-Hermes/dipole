@@ -8,6 +8,10 @@ pub const Category = enum {
     snapshot,
 };
 
+/// Event
+///
+/// See docs/architecture/event-model.md
+///
 /// Represents a single debugger event.
 /// Thin and boring for now — will grow as tests demand.
 pub const Event = struct {
