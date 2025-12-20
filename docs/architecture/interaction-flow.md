@@ -106,6 +106,39 @@ The Controller does **not**:
 - mutate session state
 - derive meaning
 
+### Controller Constraints (Non-Negotiable)
+
+The Controller is a **side-effect and ingress boundary**, not an interpreter.
+
+Its responsibility is limited to routing intent downward and admitting
+externally observed effects upward as Events.
+
+#### The Controller MUST
+
+- forward user intent to the appropriate ExecutionSource
+- initiate external interaction (e.g. debugger commands, replay advancement)
+- capture **raw observations** resulting from that interaction as Events
+- preserve the exact ordering in which observations are made
+- assign deterministic, monotonic sequence identifiers to admitted Events
+
+#### The Controller MUST NOT
+
+- parse debugger output
+- interpret or classify debugger responses
+- infer execution state (e.g. stopped, running, breakpoint hit)
+- recognise prompts or markers semantically
+- buffer, coalesce, reorder, or suppress events
+- mutate DebugSession internals or derived state
+- emit synthetic events to “improve” the model
+- discard “boring”, noisy, or repetitive output
+
+All interpretation, cleanup, and meaning-making belongs exclusively in
+Derived State and Semantic Derivation layers.
+
+Violations of these constraints collapse the separation between truth and meaning
+and are considered architectural errors.
+
+
 ---
 
 ### 4. ExecutionSource: External Interaction

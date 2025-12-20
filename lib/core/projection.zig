@@ -18,7 +18,7 @@ pub fn eventCount(events: []const Event) usize {
 
 /// Returns an AutoHashMap containing the number of events in the log by category.
 ///
-pub fn eventCountsByCategory(
+pub fn categoryCounts(
     alloc: std.mem.Allocator,
     events: []const Event,
 ) !std.AutoHashMap(Category, usize) {
@@ -34,4 +34,16 @@ pub fn eventCountsByCategory(
         }
     }
     return counts_by_category; // caller owns and deinit’s
+}
+
+/// Returns a slice of categories in the order they appear in the event log.
+///
+pub fn categoryTimeline(alloc: std.mem.Allocator, events: []const Event) ![]Category {
+    var timeline = std.ArrayList(Category).init(alloc);
+    errdefer timeline.deinit();
+
+    for (events) |ev| {
+        try timeline.append(ev.category);
+    }
+    return timeline.toOwnedSlice();
 }

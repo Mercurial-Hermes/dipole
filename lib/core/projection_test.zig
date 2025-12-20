@@ -36,10 +36,40 @@ test "projection.eventsCountsByCategory_is_replay_equivalent" {
 
     const events_replayed = dbs_b.eventsView();
 
-    var events_by_cat_a = try proj.eventCountsByCategory(std.testing.allocator, events_original);
+    var events_by_cat_a = try proj.categoryCounts(std.testing.allocator, events_original);
     defer events_by_cat_a.deinit();
-    var events_by_cat_b = try proj.eventCountsByCategory(std.testing.allocator, events_replayed);
+    var events_by_cat_b = try proj.categoryCounts(std.testing.allocator, events_replayed);
     defer events_by_cat_b.deinit();
 
     try expectMapsEqual(&events_by_cat_a, &events_by_cat_b);
+}
+
+test "projection.eventCategoryTimeline_is_replay_equivalent" {
+    var dbs_a = ds.DebugSession.init(std.testing.allocator);
+    defer dbs_a.deinit();
+
+    try dbs_a.append(.session);
+    try dbs_a.append(.session);
+    try dbs_a.append(.session);
+    try dbs_a.append(.execution);
+    try dbs_a.append(.backend);
+    try dbs_a.append(.command);
+
+    const events_original = dbs_a.eventsView();
+
+    var dbs_b = try ds.DebugSession.initFromEvents(std.testing.allocator, events_original);
+    defer dbs_b.deinit();
+
+    const events_replayed = dbs_b.eventsView();
+
+    const timeline_a = try proj.categoryTimeline(std.testing.allocator, events_original);
+    defer std.testing.allocator.free(timeline_a);
+    const timeline_b = try proj.categoryTimeline(std.testing.allocator, events_replayed);
+    defer std.testing.allocator.free(timeline_b);
+
+    try std.testing.expectEqual(timeline_a.len, timeline_b.len);
+
+    for (timeline_a, timeline_b) |o, r| {
+        try std.testing.expectEqual(o, r);
+    }
 }
