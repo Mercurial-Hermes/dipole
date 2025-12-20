@@ -1,5 +1,3 @@
-Samples
-
 # Dipole Thin Slice – Test Ledger
 
 ## Passing Tests
@@ -36,4 +34,50 @@ Tests:
 - replay requires no hidden or external state
 Status: ✅ Passing
 
+TS1-001 — Projections are replay-equivalent (category counts)
+Anchors: projection purity, replay determinism
+Types touched: Event, DebugSession, Projection
+No dependencies: controller/driver/repl/tmux/semantic
+Tests:
+- a projection computed over an original event log
+- produces identical results when computed over a replayed session
+- projection output depends *only* on the event sequence
+Status: ✅ Passing
+Notes:
+- establishes projections as pure functions over immutable truth
+- no hidden state or session identity leakage
+
+TS1-002 — Projections preserve event ordering semantics (category timeline)
+Anchors: projection purity, ordering invariants
+Types touched: Event, DebugSession, Projection
+No dependencies: controller/driver/repl/tmux/semantic
+Tests:
+- a projection that preserves event order (timeline)
+- yields identical ordered output on replay
+- confirms projections do not introduce reordering or interpretation
+Status: ✅ Passing
+Notes:
+- projections may transform shape, but must preserve logical order
+- meaning is not inferred, only reflected
+
+
 ## Next Test (RED)
+
+TS1-003 — Controller admits raw transport observations as ordered Events
+Anchors: Controller ingest boundary, event-sourced truth
+Types touched: Event, DebugSession, Controller, Driver (fake)
+No dependencies: repl/tmux/derived/semantic
+Flow the tests prove:
+- when asked to issue a command, the Controller forwards it to the driver
+- the driver produces raw transport observations (tx / rx / prompt)
+- the Controller appends **exactly those observations** to the event log
+- Events are appended in order with deterministic, monotonic `seq`
+- identical inputs produce identical event logs on replay
+Tests:
+- Controller → Driver interaction produces tx, rx, prompt events
+- no events are dropped, reordered, or synthesised
+- event sequence is replay-equivalent
+Status: ❌ Failing
+Notes:
+- events are transport-level observations only
+- no parsing, interpretation, or semantic meaning is introduced
