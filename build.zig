@@ -33,6 +33,10 @@ fn addTestsUnder(
     };
     defer it.deinit();
 
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
+    });
+
     while (it.next() catch |err| {
         std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
     }) |entry| {
@@ -46,6 +50,7 @@ fn addTestsUnder(
             .target = target,
             .optimize = optimize,
         });
+        t.root_module.addImport("driver", driver_mod);
 
         const run = b.addRunArtifact(t);
         test_step.dependOn(&run.step);

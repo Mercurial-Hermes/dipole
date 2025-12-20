@@ -103,6 +103,34 @@ SemanticAnnotation
 
 ---
 
+## Note on Controller and Event Ingress
+
+The Controller does not appear in the minimal type graph by design.
+
+The graph describes *conceptual ownership of truth*, not the mechanics of interaction.
+In particular:
+
+- **ExecutionSource defines what kinds of Events may be emitted**
+  (their schema, ordering guarantees, and authority as truth).
+- **The Controller defines when and why interaction with an ExecutionSource occurs**.
+
+In live debugging, the Controller may perform transport-level interaction
+(e.g. sending commands, observing raw I/O) on behalf of an ExecutionSource.
+However, the resulting observations are still considered events *of that ExecutionSource*.
+
+The Controller:
+- does not define event meaning
+- does not invent or reinterpret events
+- does not own event validity
+- does not participate in derived state or semantics
+
+Its role is strictly to orchestrate interaction and act as the ingress boundary
+through which externally observed events enter the DebugSession.
+
+For this reason, the Controller is intentionally excluded from the minimal type graph.
+
+---
+
 ## Relationship Rules (Explicit)
 
 ### ExecutionSource

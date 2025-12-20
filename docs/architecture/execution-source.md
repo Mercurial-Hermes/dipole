@@ -20,6 +20,15 @@ It may represent:
 
 The Debug Session consumes events identically in both cases.
 
+In live debugging scenarios, transport-level interaction (e.g. sending commands,
+observing raw I/O) may be performed by a Controller on behalf of an Execution Source.
+This does not change event ownership: the Execution Source remains the conceptual
+authority that defines which observations constitute valid Events and how they are
+ordered.
+
+The Controller performs mechanical observation only; event meaning and validity are
+defined exclusively by the Execution Source abstraction.
+
 ---
 
 ## Design Principle
@@ -39,6 +48,27 @@ An Execution Source is responsible for:
    - produce ordered session events
    - preserve causal ordering
    - never mutate or reinterpret past events
+   
+    ### Event Classes (Observational, Not Semantic)
+    
+    Events emitted by an Execution Source may represent **different classes of observation**.
+    
+    Some events record **transport-level observations**, such as:
+    - commands sent to a debugger backend
+    - raw bytes or lines received in response
+    - protocol markers (e.g. prompts, delimiters)
+    
+    Other events may record **execution-level observations**, such as:
+    - execution stopping or resuming
+    - signals or errors reported by the debugger
+    - session boundary markers
+    
+    All such events are equally authoritative as historical truth.
+    They differ only in *what was observed*, not in *their status as Events*.
+    
+    No semantic meaning is implied by an event’s class.
+    Interpretation, classification, and explanation occur exclusively in
+    Derived State and Semantic Derivation layers.
 
 2. **Session Boundaries**
    - signal when a session begins

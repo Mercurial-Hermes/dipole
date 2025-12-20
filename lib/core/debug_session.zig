@@ -1,6 +1,9 @@
-// Truth is an immutable, ordered log of events.
-// DebugSession is just the container + rules around that log.
-
+/// DebugSession
+///
+/// See docs/architecture/debug_session.md
+///
+/// Truth is an immutable, ordered log of events.
+/// DebugSession is just the container + rules around that log.
 const std = @import("std");
 const EventMod = @import("event.zig");
 pub const Event = EventMod.Event;
@@ -18,6 +21,7 @@ pub const DebugSession = struct {
 
     pub fn initFromEvents(allocator: std.mem.Allocator, events: []const Event) !DebugSession {
         var session = DebugSession.init(allocator);
+        errdefer session.deinit();
         try session.events.appendSlice(allocator, events);
         return session;
     }

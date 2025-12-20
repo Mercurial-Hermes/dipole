@@ -104,6 +104,24 @@ This prevents debugger-specific logic from polluting the core.
 
 ---
 
+## Controller
+
+The Controller is not a kernel component, not an execution source, and not a semantic layer. It is a routing and observation boundary.
+
+### Does
+
+- owns side effects (sending commands outward)
+- owns observation capture (turning I/O into Events)
+
+### Does Not
+
+- interpret
+- derive
+- store state
+- mutate the DebugSession directly
+
+---
+
 ## Derived State & Artifacts
 
 This layer exists to make Debug Sessions **usable and navigable**.
