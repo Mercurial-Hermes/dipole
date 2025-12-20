@@ -84,7 +84,7 @@ Notes:
 **Status:** ✅ Passed
 **Branch:** `exp/v0.2.0/thin-slice-1`
 **Predecessor:** TS1-003
-**Successor:** TS1-005 (Semantic Projection Boundary)
+**Successor:** TS2-001 (First Semantic Projection)
 
 ---
 
