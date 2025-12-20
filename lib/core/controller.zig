@@ -12,7 +12,7 @@
 const std = @import("std");
 const EventMod = @import("event.zig");
 const DebugSessionMod = @import("debug_session.zig");
-const DriverMod = @import("driver.zig");
+const DriverMod = @import("driver");
 pub const Event = EventMod.Event;
 pub const Category = EventMod.Category;
 pub const DebugSession = DebugSessionMod.DebugSession;

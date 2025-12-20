@@ -1,5 +1,5 @@
 const std = @import("std");
-const drv = @import("driver.zig");
+const drv = @import("driver");
 const Dummy = struct {
     buf: std.ArrayList(u8),
     poll_calls: usize = 0,
