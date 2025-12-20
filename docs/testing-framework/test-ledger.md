@@ -60,9 +60,6 @@ Notes:
 - projections may transform shape, but must preserve logical order
 - meaning is not inferred, only reflected
 
-
-## Next Test (RED)
-
 TS1-003 — Controller admits raw transport observations as ordered Events
 Anchors: Controller ingest boundary, event-sourced truth
 Types touched: Event, DebugSession, Controller, Driver (fake)
@@ -74,10 +71,13 @@ Flow the tests prove:
 - Events are appended in order with deterministic, monotonic `seq`
 - identical inputs produce identical event logs on replay
 Tests:
-- Controller → Driver interaction produces tx, rx, prompt events
-- no events are dropped, reordered, or synthesised
+- Controller → Driver interaction produces tx, rx, prompt observations
+- no observations are dropped, reordered, or synthesised
 - event sequence is replay-equivalent
-Status: ❌ Failing
+Status: ✅ Passing
 Notes:
-- events are transport-level observations only
+- events represent transport-level observations only
 - no parsing, interpretation, or semantic meaning is introduced
+
+
+## Next Test (RED)

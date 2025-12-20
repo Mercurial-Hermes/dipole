@@ -45,7 +45,7 @@ fn fakePoll(ctx: *anyopaque) ?drv.DriverObservation {
     return obs;
 }
 
-test "driver interface: send/poll callable and observable" {
+test "controller ingests raw driver observations as ordered events" {
     // --- Arrange -------------------------------------------------------------
     const alloc = std.testing.allocator;
 
