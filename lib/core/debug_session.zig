@@ -31,17 +31,16 @@ pub const DebugSession = struct {
     }
 
     pub fn append(self: *DebugSession, category: EventMod.Category) !void {
-        // this is the immutable sequence number to determine 'kernel' truth of order
-        // events can have the same timestamp, but must have a unique sequence number
-        // in this append: An event of category X was observed, and it occupies position N in the immutable log.
+        // This is the immutable event identifier assigned at append time.
+        // Ordering comes from slice position; event_id labels the event for identity/replay.
         // If a timestamp exists, it must come from:
         //      an execution source
         //      a backend
         //      a replayed dataset
         //      or a later derivation step
-        const seq = self.events.items.len;
+        const event_id = self.events.items.len;
         try self.events.append(self.allocator, .{
-            .seq = seq,
+            .event_id = event_id,
             .category = category,
             .timestamp = null,
         });

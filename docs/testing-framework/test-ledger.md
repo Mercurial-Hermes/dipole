@@ -2,12 +2,12 @@
 
 ## Passing Tests
 
-TS0-001 DebugSession append preserves order + assigns monotonic seq ids
+TS0-001 DebugSession append preserves order + assigns monotonic event_id
 Anchors: event-sourced truth, replay determinism
 Types touched: Event, DebugSession
 No dependencies: controller/driver/repl/tmux/derived/semantic
 Tests:
-- kernel-assigned sequence identity (`seq`)
+- kernel-assigned identity (`event_id`)
 - append-only, total ordering of events
 - no reliance on wall-clock or physical time
 Status: ✅ Passing
@@ -68,7 +68,7 @@ Flow the tests prove:
 - when asked to issue a command, the Controller forwards it to the driver
 - the driver produces raw transport observations (tx / rx / prompt)
 - the Controller appends **exactly those observations** to the event log
-- Events are appended in order with deterministic, monotonic `seq`
+- Events are appended in order with deterministic, monotonic `event_id`
 - identical inputs produce identical event logs on replay
 Tests:
 - Controller → Driver interaction produces tx, rx, prompt observations
@@ -156,7 +156,7 @@ but **introduces no new meaning**.
 #### Kernel Behavior
 
 * Unchanged
-* Assigns monotonic `seq`
+* Assigns monotonic `event_id`
 * Preserves observation order as seen
 
 ---
@@ -209,7 +209,7 @@ This slice is about **noise, not meaning**.
 
     * events are produced
     * categories remain valid
-    * `seq` is strictly monotonic
+    * `event_id` is strictly monotonic
     * no semantic leakage occurs
 
 Tests intentionally avoid:
@@ -255,5 +255,117 @@ TS1-004 is complete because:
 Reality has entered the system —
 and the system holds.
 
+# TS2-001 — First Semantic Projection (Event Kind Classification)
+
+**Anchors:** semantic derivation, projection purity, replay determinism  
+**Types touched:** `Event`, `DebugSession`, `Projection`  
+**Dependencies:** none (controller / driver / repl / tmux / kernel explicitly excluded)  
+**Status:** ✅ **Passed**
+
+---
+
+## Tests
+
+- A projection derives **exactly one semantic `EventKind` per `Event`** in the log  
+- Derived output length matches input event count  
+- Derived output **preserves event ordering as given by the event log slice**  
+- Projection depends **only** on:
+  - `Event.category`
+  - `Event.event_id` (identity only; not ordering)
+- Replayed event logs produce **identical derived semantic results**
+
+---
+
+## Notes
+
+- This is the **first introduction of meaning** above the event log  
+- The projection is:
+  - pure  
+  - deterministic  
+  - lossy  
+  - allocator-injected  
+  - downstream-only  
+- The projection is strictly **read-only over immutable truth**  
+- No debugger semantics, intent, authority, or state are inferred  
+- `Event.timestamp` is explicitly ignored and proven semantically irrelevant  
+- Establishes that **semantic meaning can be layered without contaminating TS1**  
+- Ordering authority remains exclusively with the event log; semantics must not reinterpret history  
+
+---
+
+## Summary
+
+TS2-001 proves that interpretive semantic meaning can exist as a **pure, replayable, downstream layer**
+over the event log without introducing authority, causality, or state.
+
+# TS2-002 — Projection Identity & Registry
+
+**Anchors:** semantic identity, meaning stability, non-operational structure  
+**Types touched:** `ProjectionId`, `SemanticVersion`, `ProjectionDef`, `ProjectionRegistry`, `EventField`  
+**Dependencies:** none (execution, planner, subscribers, runtime explicitly excluded)  
+**Status:** ✅ **Passed**
+
+---
+
+## Tests
+
+- Semantic meaning is **discoverable by name** via `ProjectionId`
+- Projection identity is **pure declarative data**:
+  - no function fields
+  - no allocators
+  - no pointers to mutable state
+- The registry is **unambiguous**:
+  - no duplicate `(name, version)` pairs
+- **Unversioned and versioned projections may coexist**:
+  - lookup is exact
+  - no silent replacement or implicit upgrade
+- Every projection **explicitly declares its semantic dependency surface**:
+  - `permitted_fields` is non-empty
+  - only TS2-001–allowed fields are permitted
+
+*(Non-operational registry invariant is documented and enforced by structure and review, not an automated test.)*
+
+---
+
+## Notes
+
+- TS2-002 introduces **identity for meaning**, not new meaning
+- The registry is:
+  - static
+  - declarative
+  - non-operational
+  - non-authoritative
+- Projection identity:
+  - names semantic meaning
+  - is stable across rebuilds and replays
+  - is independent of execution, ordering, or consumption
+- Semantic versioning is:
+  - explicit
+  - additive
+  - opt-in
+  - non-replacing
+- `EventField` establishes a **visible semantic firewall**:
+  - dependency surfaces are declared in data
+  - enforcement is structural and test-driven
+- No projection execution, scheduling, caching, or runtime behavior is introduced
+- No coupling to planners, UI, or debugger subsystems exists
+
+---
+
+## Summary
+
+TS2-002 establishes a **stable, explicit, and inert identity layer for semantic meaning** in Dipole.
+Semantic interpretations are now:
+
+- named
+- discoverable
+- unambiguous
+- explicitly versioned
+- explicit about their dependency surfaces
+
+All without introducing execution, authority, or runtime behavior.
+
+This completes the semantic identity foundation and cleanly prepares the system
+for TS2-003 (projection contracts vs implementation drift).
 
 ## Next Test (RED)

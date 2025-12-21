@@ -13,9 +13,9 @@ test "debug_session.test.append_preserves_order_and_ids_are_monotonic" {
 
     try std.testing.expectEqual(@as(usize, 3), events_view.len);
 
-    try std.testing.expectEqual(@as(u64, 0), events_view[0].seq);
-    try std.testing.expectEqual(@as(u64, 1), events_view[1].seq);
-    try std.testing.expectEqual(@as(u64, 2), events_view[2].seq);
+    try std.testing.expectEqual(@as(u64, 0), events_view[0].event_id);
+    try std.testing.expectEqual(@as(u64, 1), events_view[1].event_id);
+    try std.testing.expectEqual(@as(u64, 2), events_view[2].event_id);
 }
 
 test "debug_session.test.mutation_of_recorded_truth_not_possible" {
@@ -40,7 +40,7 @@ test "debug_session.test.mutation_of_recorded_truth_not_possible" {
     }
     // TS0-002 (truth finality): these mutations must remain impossible.
     // Uncommenting any of the lines below should fail to compile.
-    // events_view[0].seq = 99;
+    // events_view[0].event_id = 99;
     // events_view[1] = events_view[0];
 }
 test "debug_session.test.debugsession_can_be_deterministically_replayed_from_event_log" {
@@ -63,7 +63,7 @@ test "debug_session.test.debugsession_can_be_deterministically_replayed_from_eve
     try std.testing.expectEqual(original.len, replayed.len);
 
     for (original, replayed) |o, r| {
-        try std.testing.expectEqual(o.seq, r.seq);
+        try std.testing.expectEqual(o.event_id, r.event_id);
         try std.testing.expectEqual(o.category, r.category);
     }
 }

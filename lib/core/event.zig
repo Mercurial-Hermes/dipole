@@ -16,6 +16,6 @@ pub const Category = enum {
 /// Thin and boring for now — will grow as tests demand.
 pub const Event = struct {
     category: Category,
-    seq: u64,
+    event_id: u64,
     timestamp: ?std.time.Instant = null,
 };
