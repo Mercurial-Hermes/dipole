@@ -1,5 +1,5 @@
 const std = @import("std");
-const EventKind = @import("event_kind.zig").EventKind;
+const EventKind = @import("event_kind").EventKind;
 
 pub const SemanticVersion = struct {
     major: u16,
@@ -20,6 +20,13 @@ pub const EventField = enum {
     event_id,
 };
 
+pub fn eventFieldName(f: EventField) []const u8 {
+    return switch (f) {
+        .category => "category",
+        .event_id => "event_id",
+    };
+}
+
 pub const ProjectionDef = struct {
     id: ProjectionId,
     description: []const u8,
@@ -27,8 +34,14 @@ pub const ProjectionDef = struct {
     permitted_fields: []const EventField,
 };
 
+pub const ProjectionMeta = struct {
+    name: []const u8,
+    version: ?SemanticVersion,
+};
+
 pub const ProjectionRegistry = struct {
     projections: []const ProjectionDef,
+    meta: []const ProjectionMeta,
 
     pub fn lookup(self: *const ProjectionRegistry, id: ProjectionId) ?*const ProjectionDef {
         for (self.projections) |*p| {
@@ -47,6 +60,32 @@ pub const ProjectionRegistry = struct {
         const av = a.?;
         const bv = b.?;
         return av.major == bv.major and av.minor == bv.minor;
+    }
+
+    pub fn exists(self: *const ProjectionRegistry, id: ProjectionId) bool {
+        for (self.meta) |m| {
+            if (!std.mem.eql(u8, m.name, id.name)) continue;
+            if (versionsEqual(m.version, id.version)) return true;
+        }
+        return false;
+    }
+
+    pub fn nameExists(self: *const ProjectionRegistry, name: []const u8) bool {
+        for (self.meta) |m| {
+            if (std.mem.eql(u8, m.name, name)) return true;
+        }
+        return false;
+    }
+
+    pub fn nameHasMultiple(self: *const ProjectionRegistry, name: []const u8) bool {
+        var count: usize = 0;
+        for (self.meta) |m| {
+            if (std.mem.eql(u8, m.name, name)) {
+                count += 1;
+                if (count > 1) return true;
+            }
+        }
+        return false;
     }
 };
 
@@ -68,6 +107,15 @@ const projections = [_]ProjectionDef{
     },
 };
 
+const projection_meta = blk: {
+    var items: [projections.len]ProjectionMeta = undefined;
+    for (projections, 0..) |def, i| {
+        items[i] = .{ .name = def.id.name, .version = def.id.version };
+    }
+    break :blk items;
+};
+
 pub const registry = ProjectionRegistry{
     .projections = &projections,
+    .meta = &projection_meta,
 };

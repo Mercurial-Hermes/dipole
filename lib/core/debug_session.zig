@@ -5,7 +5,7 @@
 /// Truth is an immutable, ordered log of events.
 /// DebugSession is just the container + rules around that log.
 const std = @import("std");
-const EventMod = @import("event.zig");
+const EventMod = @import("event");
 pub const Event = EventMod.Event;
 
 pub const DebugSession = struct {

@@ -10,7 +10,7 @@
 /// It enforces order and sequence of events
 ///
 const std = @import("std");
-const EventMod = @import("event.zig");
+const EventMod = @import("event");
 const DebugSessionMod = @import("debug_session.zig");
 const DriverMod = @import("driver");
 pub const Event = EventMod.Event;
