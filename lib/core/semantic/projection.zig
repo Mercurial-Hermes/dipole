@@ -4,11 +4,16 @@
 /// See docs/architecture/semantic-derivation.md
 ///
 const std = @import("std");
-const EventMod = @import("../event.zig");
-const EventKindMod = @import("event_kind.zig");
+const EventMod = @import("event");
+const EventKindMod = @import("event_kind");
 pub const Event = EventMod.Event;
 pub const Category = EventMod.Category;
 pub const EventKind = EventKindMod.EventKind;
+
+pub const CategoryCount = struct {
+    category: Category,
+    count: usize,
+};
 
 pub fn projectEventKinds(
     alloc: std.mem.Allocator,
@@ -36,24 +41,40 @@ pub fn eventCount(events: []const Event) usize {
     return events.len;
 }
 
-/// Returns an AutoHashMap containing the number of events in the log by category.
-///
+/// Returns a deterministic list of category counts, sorted by enum order.
+/// Only categories with non-zero counts are returned.
 pub fn categoryCounts(
     alloc: std.mem.Allocator,
     events: []const Event,
-) !std.AutoHashMap(Category, usize) {
-    var counts_by_category = std.AutoHashMap(Category, usize).init(alloc);
-    errdefer counts_by_category.deinit();
-
-    for (events) |ev| {
-        const gop = try counts_by_category.getOrPut(ev.category);
-        if (gop.found_existing) {
-            gop.value_ptr.* += 1;
-        } else {
-            gop.value_ptr.* = 1;
+) ![]CategoryCount {
+    const category_values = comptime blk: {
+        const fields = std.meta.fields(Category);
+        var tmp: [fields.len]Category = undefined;
+        for (fields, 0..) |field, i| {
+            tmp[i] = @enumFromInt(field.value);
         }
+        break :blk tmp;
+    };
+
+    var counts = std.mem.zeroes([category_values.len]usize);
+    for (events) |evnt| {
+        const idx = @intFromEnum(evnt.category);
+        counts[idx] += 1;
     }
-    return counts_by_category; // caller owns and deinit’s
+
+    var list = std.ArrayList(CategoryCount).init(alloc);
+    errdefer list.deinit();
+
+    for (category_values, 0..) |cat, i| {
+        const c = counts[i];
+        if (c == 0) continue;
+        try list.append(.{
+            .category = cat,
+            .count = c,
+        });
+    }
+
+    return list.toOwnedSlice();
 }
 
 /// Returns a slice of categories in the order they appear in the event log.

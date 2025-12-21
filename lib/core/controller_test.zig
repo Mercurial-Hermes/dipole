@@ -1,5 +1,5 @@
 const std = @import("std");
-const ev = @import("event.zig");
+const ev = @import("event");
 const ctl = @import("controller.zig");
 const drv = @import("driver");
 const dbs = @import("debug_session.zig");

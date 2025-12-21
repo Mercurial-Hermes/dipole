@@ -1,20 +1,13 @@
 const std = @import("std");
 const ds = @import("debug_session");
-const ev = @import("../event.zig");
+const ev = @import("event");
 const proj = @import("projection.zig");
 
-fn expectMapsEqual(
-    m1: *const std.AutoHashMap(ev.Category, usize),
-    m2: *const std.AutoHashMap(ev.Category, usize),
-) !void {
-    try std.testing.expectEqual(m1.count(), m2.count());
-
-    var it = m1.iterator();
-    while (it.next()) |entry| {
-        const k = entry.key_ptr.*;
-        const v1 = entry.value_ptr.*;
-        const v2 = m2.get(k) orelse return error.MissingKey;
-        try std.testing.expectEqual(v1, v2);
+fn expectCategoryCountsEqual(a: []const proj.CategoryCount, b: []const proj.CategoryCount) !void {
+    try std.testing.expectEqual(a.len, b.len);
+    for (a, b) |ea, eb| {
+        try std.testing.expectEqual(ea.category, eb.category);
+        try std.testing.expectEqual(ea.count, eb.count);
     }
 }
 
@@ -43,12 +36,12 @@ test "projection.categoryCounts_is_replay_equivalent" {
 
     const events_replayed = dbs_b.eventsView();
 
-    var events_by_cat_a = try proj.categoryCounts(std.testing.allocator, events_original);
-    defer events_by_cat_a.deinit();
-    var events_by_cat_b = try proj.categoryCounts(std.testing.allocator, events_replayed);
-    defer events_by_cat_b.deinit();
+    const events_by_cat_a = try proj.categoryCounts(std.testing.allocator, events_original);
+    defer std.testing.allocator.free(events_by_cat_a);
+    const events_by_cat_b = try proj.categoryCounts(std.testing.allocator, events_replayed);
+    defer std.testing.allocator.free(events_by_cat_b);
 
-    try expectMapsEqual(&events_by_cat_a, &events_by_cat_b);
+    try expectCategoryCountsEqual(events_by_cat_a, events_by_cat_b);
 }
 
 test "projection.categoryTimeline_is_replay_equivalent" {
