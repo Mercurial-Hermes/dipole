@@ -89,10 +89,10 @@ test "controller ingests raw driver observations as ordered events" {
     const events = session.eventsView();
     try std.testing.expectEqual(@as(usize, 3), events.len);
 
-    // --- Assert: ordering + seq ----------------------------------------------
+    // --- Assert: ordering + event_id ----------------------------------------------
 
-    try std.testing.expect(events[0].seq < events[1].seq);
-    try std.testing.expect(events[1].seq < events[2].seq);
+    try std.testing.expect(events[0].event_id < events[1].event_id);
+    try std.testing.expect(events[1].event_id < events[2].event_id);
 
     // --- Assert: categories reflect ingress, not meaning ---------------------
 
@@ -153,9 +153,9 @@ test "controller ingests real transport observations without interpretation" {
 
     try std.testing.expect(backend_count >= 1);
 
-    // seq must be monotonic.
+    // event_id must be monotonic.
     var i: usize = 1;
     while (i < events.len) : (i += 1) {
-        try std.testing.expect(events[i - 1].seq < events[i].seq);
+        try std.testing.expect(events[i - 1].event_id < events[i].event_id);
     }
 }

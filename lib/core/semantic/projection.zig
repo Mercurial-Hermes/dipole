@@ -4,9 +4,29 @@
 /// See docs/architecture/semantic-derivation.md
 ///
 const std = @import("std");
-const EventMod = @import("event.zig");
+const EventMod = @import("../event.zig");
+const EventKindMod = @import("event_kind.zig");
 pub const Event = EventMod.Event;
 pub const Category = EventMod.Category;
+pub const EventKind = EventKindMod.EventKind;
+
+pub fn projectEventKinds(
+    alloc: std.mem.Allocator,
+    events: []const Event,
+) ![]EventKind {
+    const event_kinds = try alloc.alloc(EventKind, events.len);
+    errdefer alloc.free(event_kinds);
+
+    for (events, 0..) |e, i| {
+        event_kinds[i] = switch (e.category) {
+            .session => .SessionLifecycle,
+            .command => .UserAction,
+            .backend, .execution => .EngineActivity,
+            .snapshot => .Snapshot,
+        };
+    }
+    return event_kinds; // caller frees
+}
 
 /// Returns the total number of events in the log.
 ///
