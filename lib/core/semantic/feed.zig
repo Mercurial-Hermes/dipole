@@ -68,20 +68,60 @@ fn serializeEventKindsCanonical(alloc: std.mem.Allocator, kinds: []const proj.Ev
 fn projectToFrame(alloc: std.mem.Allocator, id: reg.ProjectionId, events: []const ev.Event) FeedError!Frame {
     try ensureRegistered(id);
 
-    if (!std.mem.eql(u8, id.name, "event.kind")) return error.UnsupportedProjection;
-
     const name_copy = try alloc.dupe(u8, id.name);
     errdefer alloc.free(name_copy);
 
-    const kinds = try proj.projectEventKinds(alloc, events);
-    defer alloc.free(kinds);
+    if (std.mem.eql(u8, id.name, "event.kind")) {
+        const kinds = try proj.projectEventKinds(alloc, events);
+        defer alloc.free(kinds);
 
-    const payload = try serializeEventKindsCanonical(alloc, kinds);
-    return .{
-        .projection_id = name_copy,
-        .version = id.version,
-        .payload = payload,
-    };
+        const payload = try serializeEventKindsCanonical(alloc, kinds);
+        return .{
+            .projection_id = name_copy,
+            .version = id.version,
+            .payload = payload,
+        };
+    }
+
+    if (std.mem.eql(u8, id.name, "breakpoint.list")) {
+        const payload = blk: {
+            // Find most recent snapshot event.
+            var last: ?[]const u8 = null;
+            for (events) |e| {
+                if (e.category == .snapshot) last = e.payload;
+            }
+            if (last) |p| {
+                break :blk try alloc.dupe(u8, p);
+            }
+            // No snapshot events; return canonical empty list.
+            break :blk try alloc.dupe(u8, "[]");
+        };
+        return .{
+            .projection_id = name_copy,
+            .version = id.version,
+            .payload = payload,
+        };
+    }
+
+    if (std.mem.eql(u8, id.name, "register.snapshot")) {
+        const payload = blk: {
+            var last: ?[]const u8 = null;
+            for (events) |e| {
+                if (e.category == .snapshot) last = e.payload;
+            }
+            if (last) |p| {
+                break :blk try alloc.dupe(u8, p);
+            }
+            break :blk try alloc.dupe(u8, "[]");
+        };
+        return .{
+            .projection_id = name_copy,
+            .version = id.version,
+            .payload = payload,
+        };
+    }
+
+    return error.UnsupportedProjection;
 }
 
 pub fn buildFrame(alloc: std.mem.Allocator, id: reg.ProjectionId, events: []const ev.Event) FeedError!Frame {

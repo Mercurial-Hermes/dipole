@@ -18,4 +18,6 @@ pub const Event = struct {
     category: Category,
     event_id: u64,
     timestamp: ?std.time.Instant = null,
+    /// Optional opaque payload for snapshot-style events; empty by default.
+    payload: []const u8 = &.{},
 };

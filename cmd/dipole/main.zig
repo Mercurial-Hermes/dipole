@@ -2,8 +2,9 @@ const std = @import("std");
 const semantic_list = @import("semantic_list");
 const semantic_show = @import("semantic_show");
 const semantic_eval = @import("semantic_eval");
+const semantic_render = @import("semantic_render");
 
-const Usage = enum { top, list, show, eval };
+const Usage = enum { top, list, show, eval, render };
 
 fn printUsage(w: anytype, which: Usage) !void {
     switch (which) {
@@ -11,6 +12,7 @@ fn printUsage(w: anytype, which: Usage) !void {
         .list => try w.writeAll("usage: dipole semantic list\n"),
         .show => try w.writeAll("usage: dipole semantic show <projection@version>\n"),
         .eval => try w.writeAll("usage: dipole semantic eval <projection@version> --log <path>\n"),
+        .render => try w.writeAll("usage: dipole semantic render <projection@version> --log <path>\n"),
     }
 }
 
@@ -107,6 +109,40 @@ pub fn main() !void {
                 dieToken(stderr, info.token, info.exit_code);
             }
             dieToken(stderr, "ERR_EVAL_FAILED", 1);
+        };
+        defer alloc.free(bytes);
+
+        try stdout.writeAll(bytes);
+        return;
+    }
+
+    if (std.mem.eql(u8, subcmd, "render")) {
+        const selector = args_iter.next() orelse {
+            try printUsage(stderr, .eval);
+            std.process.exit(2);
+        };
+        const flag = args_iter.next() orelse {
+            try printUsage(stderr, .eval);
+            std.process.exit(2);
+        };
+        if (!std.mem.eql(u8, flag, "--log")) {
+            try printUsage(stderr, .eval);
+            std.process.exit(2);
+        }
+        const log_path = args_iter.next() orelse {
+            try printUsage(stderr, .eval);
+            std.process.exit(2);
+        };
+        if (args_iter.next() != null) {
+            try printUsage(stderr, .eval);
+            std.process.exit(2);
+        }
+
+        const bytes = semantic_render.render(alloc, selector, log_path) catch |err| {
+            if (semantic_render.errorInfo(err)) |info| {
+                dieToken(stderr, info.token, info.exit_code);
+            }
+            dieToken(stderr, "ERR_RENDER_FAILED", 1);
         };
         defer alloc.free(bytes);
 
