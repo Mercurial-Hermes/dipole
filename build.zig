@@ -1,360 +1,490 @@
 const std = @import("std");
 
-fn addSimpleProgram(
-    b: *std.Build,
-    name: []const u8,
-    source: []const u8,
-    is_c: bool,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-) !*std.Build.Step {
-    const exe = b.addExecutable(.{
-        .name = name,
-        .target = target,
-        .optimize = optimize,
-    });
-
-    if (is_c) {
-        exe.addCSourceFile(.{
-            .file = b.path(source),
-            .flags = &.{"-g"},
-        });
-        exe.linkLibC();
-    } else {
-        exe.root_module.root_source_file = b.path(source);
-    }
-
-    const install_exe = b.addInstallArtifact(exe, .{});
-
-    const step = b.step(name, "Build simple program");
-    step.dependOn(&install_exe.step);
-
-    b.getInstallStep().dependOn(&install_exe.step);
-
-    return step;
-}
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const trace_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/trace.zig"),
+    const test_step = b.step("test", "Run all tests");
+    const proj_step = b.step("test-projection", "Run semantic projection tests");
+    const control_step = b.step("test-control", "Run control tests");
+    const cli_step = b.step("test-cli", "Run CLI tests");
+    const learning_step = b.step("learning-targets", "Build learning target programs");
+
+    // Shared modules for CLI and tests.
+    const event_kind_mod = b.addModule("event_kind", .{
+        .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
+    });
+    const semantic_registry_mod = b.addModule("semantic_registry", .{
+        .root_source_file = b.path("lib/core/semantic/registry.zig"),
+        .imports = &.{
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const event_mod = b.addModule("event", .{
+        .root_source_file = b.path("lib/core/event.zig"),
+    });
+    const semantic_list_mod = b.addModule("semantic_list", .{
+        .root_source_file = b.path("cmd/dipole/cli/semantic_list.zig"),
+        .imports = &.{
+            .{ .name = "semantic_registry", .module = semantic_registry_mod },
+        },
+    });
+    const semantic_show_mod = b.addModule("semantic_show", .{
+        .root_source_file = b.path("cmd/dipole/cli/semantic_show.zig"),
+        .imports = &.{
+            .{ .name = "semantic_registry", .module = semantic_registry_mod },
+        },
+    });
+    const projection_mod = b.addModule("projection", .{
+        .root_source_file = b.path("lib/core/semantic/projection.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_eval_mod = b.addModule("semantic_eval", .{
+        .root_source_file = b.path("cmd/dipole/cli/semantic_eval.zig"),
+        .imports = &.{
+            .{ .name = "semantic_registry", .module = semantic_registry_mod },
+            .{ .name = "projection", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const ui_adapter_mod = b.addModule("ui_adapter", .{
+        .root_source_file = b.path("lib/core/semantic/ui_adapter.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+        },
+    });
+    const semantic_render_mod = b.addModule("semantic_render", .{
+        .root_source_file = b.path("cmd/dipole/cli/semantic_render.zig"),
+        .imports = &.{
+            .{ .name = "semantic_registry", .module = semantic_registry_mod },
+            .{ .name = "semantic_feed", .module = semantic_feed_mod },
+            .{ .name = "ui_adapter", .module = ui_adapter_mod },
+            .{ .name = "event", .module = event_mod },
+        },
     });
 
-    const args_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/Args.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const ansi_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/ansi.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const term_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/term.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const lldbdriver_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/debugger/LLDBDriver.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const log_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/Log.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    lldbdriver_mod.addImport("log", log_mod);
-
-    const controller_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/controller/Controller.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    controller_mod.addImport("log", log_mod);
-    controller_mod.addImport("lldbdriver", lldbdriver_mod);
-
-    const tui_mod = b.createModule(.{
-        .root_source_file = b.path("lib/ui/tui.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    tui_mod.addImport("log", log_mod);
-    tui_mod.addImport("term", term_mod);
-
-    const tmux_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/Tmux.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    tmux_mod.addImport("log", log_mod);
-
-    const panes_mod = b.createModule(.{
-        .root_source_file = b.path("lib/ui/render/panes.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const regs_viewer_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/RegsViewer.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    regs_viewer_mod.addImport("log", log_mod);
-    regs_viewer_mod.addImport("panes", panes_mod);
-    regs_viewer_mod.addImport("term", term_mod);
-    regs_viewer_mod.addImport("ansi", ansi_mod);
-
-    const repl_mod = b.createModule(.{
-        .root_source_file = b.path("lib/core/REPL.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    repl_mod.addImport("log", log_mod);
-
-    // Unit tests for mods (must run through build graph so module imports work)
-    const tui_tests = b.addTest(.{
-        .root_source_file = b.path("lib/ui/tui.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    tui_tests.root_module.addImport("log", log_mod);
-    tui_tests.root_module.addImport("term", term_mod);
-
-    const tui_test_step = b.step("test-tui", "Run Tui unit tests");
-    tui_test_step.dependOn(&tui_tests.step);
-
-    const repl_tests = b.addTest(.{
-        .root_source_file = b.path("lib/core/REPL.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    repl_tests.root_module.addImport("log", log_mod);
-
-    const repl_test_step = b.step("test-repl", "Run REPL unit tests");
-    repl_test_step.dependOn(&repl_tests.step);
-
-    const regs_view_tests = b.addTest(.{
-        .root_source_file = b.path("lib/core/RegsViewer.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    regs_view_tests.root_module.addImport("log", log_mod);
-    regs_view_tests.root_module.addImport("panes", panes_mod);
-    regs_view_tests.root_module.addImport("term", term_mod);
-    regs_view_tests.root_module.addImport("ansi", ansi_mod);
-
-    const regs_view_step = b.step("test-regs-view", "Run Regs View unit tests");
-    regs_view_step.dependOn(&regs_view_tests.step);
-
-    const controller_tests = b.addTest(.{
-        .root_source_file = b.path("lib/core/controller/Controller.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    controller_tests.root_module.addImport("log", log_mod);
-    controller_tests.root_module.addImport("lldbdriver", lldbdriver_mod);
-
-    const controller_step = b.step("test-controller", "Run Controller unit tests");
-    controller_step.dependOn(&controller_tests.step);
-    // End Unit tests for mods
-
-    const simple = b.addExecutable(.{
-        .name = "simple",
-        .target = target,
-        .optimize = optimize,
-    });
-    simple.addCSourceFile(.{
-        .file = b.path("targets/c/simple.c"),
-        .flags = &.{"-g"},
-    });
-    simple.linkLibC();
-    const install_simple = b.addInstallArtifact(simple, .{});
-    const simple_step = b.step("simple", "Install the simple executable");
-    simple_step.dependOn(&install_simple.step);
-
-    const simple_add = b.addExecutable(.{
-        .name = "simple_add",
-        .target = target,
-        .optimize = optimize,
-    });
-    simple_add.addCSourceFile(.{
-        .file = b.path("targets/c/simple_add_int.c"),
-        .flags = &.{"-g"},
-    });
-    simple_add.linkLibC();
-    const install_simple_add = b.addInstallArtifact(simple_add, .{});
-    const simple_add_step = b.step("simple_add", "Install the simple_add executable");
-    simple_add_step.dependOn(&install_simple_add.step);
-
-    const simple_add_infinite_loop = b.addExecutable(.{
-        .name = "simple_add_infinite_loop",
-        .target = target,
-        .optimize = optimize,
-    });
-    simple_add_infinite_loop.addCSourceFile(.{
-        .file = b.path("targets/c/simple_add_inf_loop.c"),
-        .flags = &.{"-g"},
-    });
-    simple_add_infinite_loop.linkLibC();
-    const install_simple_add_infinite_loop = b.addInstallArtifact(simple_add_infinite_loop, .{});
-    const simple_add_infinite_loop_step = b.step("simple_add_infinite_loop", "Install the simple_add_infinite_loop executable");
-    simple_add_infinite_loop_step.dependOn(&install_simple_add_infinite_loop.step);
-
-    // dipole executables
     const dipole = b.addExecutable(.{
         .name = "dipole",
         .root_source_file = b.path("cmd/dipole/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    dipole.root_module.addImport("semantic_list", semantic_list_mod);
+    dipole.root_module.addImport("semantic_show", semantic_show_mod);
+    dipole.root_module.addImport("semantic_registry", semantic_registry_mod);
+    dipole.root_module.addImport("semantic_eval", semantic_eval_mod);
+    dipole.root_module.addImport("semantic_render", semantic_render_mod);
+    dipole.root_module.addImport("semantic_feed", semantic_feed_mod);
+    dipole.root_module.addImport("ui_adapter", ui_adapter_mod);
+    dipole.root_module.addImport("projection", projection_mod);
+    dipole.root_module.addImport("event", event_mod);
+    b.installArtifact(dipole);
+    b.getInstallStep().dependOn(learning_step);
 
-    dipole.root_module.addImport("args", args_mod);
-    dipole.root_module.addImport("ansi", ansi_mod);
-    dipole.root_module.addImport("lldbdriver", lldbdriver_mod);
-    dipole.root_module.addImport("log", log_mod);
-    dipole.root_module.addImport("tui", tui_mod);
-    dipole.root_module.addImport("tmux", tmux_mod);
-    dipole.root_module.addImport("panes", panes_mod);
-    dipole.root_module.addImport("term", term_mod);
-    dipole.root_module.addImport("regsview", regs_viewer_mod);
-    dipole.root_module.addImport("repl", repl_mod);
+    addCliTests(
+        b,
+        cli_step,
+        test_step,
+        "cmd/dipole/cli",
+        target,
+        optimize,
+        .{
+            .semantic_list = semantic_list_mod,
+            .semantic_show = semantic_show_mod,
+            .semantic_eval = semantic_eval_mod,
+            .semantic_render = semantic_render_mod,
+            .semantic_registry = semantic_registry_mod,
+            .projection = projection_mod,
+            .event = event_mod,
+            .event_kind = event_kind_mod,
+            .semantic_feed = semantic_feed_mod,
+            .ui_adapter = ui_adapter_mod,
+        },
+    );
 
-    const install_dipole = b.addInstallArtifact(dipole, .{});
-    const dipole_step = b.step("dipole", "Install the dipole executable");
-    dipole_step.dependOn(&install_dipole.step);
+    // Change this to wherever you keep tests.
+    addTestsUnder(b, test_step, "lib", target, optimize);
+    addControlTests(
+        b,
+        control_step,
+        target,
+        optimize,
+    );
+    test_step.dependOn(control_step);
 
-    //*** simple binary to view regs file and appear in right pane of a dipole tmux session
-    const dipole_regsview = b.addExecutable(.{
-        .name = "dipole-regsview",
-        .root_source_file = b.path("cmd/dipole-regsview/main.zig"),
-        .target = target,
-        .optimize = optimize,
+    // Dedicated projection tests (semantic layer only)
+    addSemanticTests(b, proj_step, "lib/core/semantic", target, optimize);
+    addLearningTargets(b, learning_step, target, optimize);
+}
+
+fn addTestsUnder(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    root_rel: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const root = b.path(root_rel);
+
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch |err| {
+        std.debug.panic("failed to open '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer dir.close();
+
+    var it = dir.walk(a) catch |err| {
+        std.debug.panic("failed to walk '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer it.deinit();
+
+    const event_mod = b.addModule("event", .{
+        .root_source_file = b.path("lib/core/event.zig"),
+    });
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
+    });
+    const debug_session_mod = b.addModule("debug_session", .{
+        .root_source_file = b.path("lib/core/debug_session.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const event_kind_mod = b.addModule("event_kind", .{
+        .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
+    });
+    const projection_mod = b.addModule("projection", .{
+        .root_source_file = b.path("lib/core/semantic/projection.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_registry_mod = b.addModule("semantic_registry", .{
+        .root_source_file = b.path("lib/core/semantic/registry.zig"),
+        .imports = &.{
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const controller_mod = b.addModule("controller", .{
+        .root_source_file = b.path("lib/core/controller.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "debug_session.zig", .module = debug_session_mod },
+            .{ .name = "driver", .module = driver_mod },
+        },
     });
 
-    dipole_regsview.root_module.addImport("regsview", regs_viewer_mod);
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+        if (std.mem.startsWith(u8, entry.path, "core/control/")) continue;
 
-    const install_dipole_regsview = b.addInstallArtifact(dipole_regsview, .{});
-    const dipole_regsview_step = b.step("dipole-regsview", "Install the dipole-regsview helper");
-    dipole_regsview_step.dependOn(&install_dipole_regsview.step);
+        const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
 
-    //***
+        const t = b.addTest(.{
+            .root_source_file = b.path(rel_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        t.root_module.addImport("driver", driver_mod);
+        t.root_module.addImport("debug_session", debug_session_mod);
+        t.root_module.addImport("event", event_mod);
+        t.root_module.addImport("event_kind", event_kind_mod);
+        t.root_module.addImport("projection", projection_mod);
+        t.root_module.addImport("semantic_registry", semantic_registry_mod);
+        t.root_module.addImport("semantic_feed", semantic_feed_mod);
+        t.root_module.addImport("controller", controller_mod);
 
-    // *** smoke test --no-tmux trying to catch regressions on a simple dipole session
-    const smoke_simple = b.addExecutable(.{
-        .name = "smoke_simple",
-        .root_source_file = b.path("tests/smoke_simple.zig"),
-        .target = target,
-        .optimize = optimize,
+        const run = b.addRunArtifact(t);
+        test_step.dependOn(&run.step);
+    }
+}
+
+fn addSemanticTests(
+    b: *std.Build,
+    step: *std.Build.Step,
+    root_rel: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const event_mod = b.addModule("event", .{
+        .root_source_file = b.path("lib/core/event.zig"),
     });
-    const run_smoke = b.addRunArtifact(smoke_simple);
-    run_smoke.addArg(b.getInstallPath(.bin, "dipole"));
-    run_smoke.addArg(b.getInstallPath(.bin, "simple"));
-    run_smoke.step.dependOn(&install_dipole.step);
-    run_smoke.step.dependOn(&install_simple.step);
-
-    const smoke_step = b.step("smoke", "Run Dipole smoke test (run --no-tmux simple)");
-    smoke_step.dependOn(&run_smoke.step);
-    // *** end smoke test
-
-    const exp_0_4 = b.addExecutable(.{
-        .name = "exp-0.4-trace-step",
-        .root_source_file = b.path("exp/0.4-trace-step/main.zig"),
-        .target = target,
-        .optimize = optimize,
+    const debug_session_mod = b.addModule("debug_session", .{
+        .root_source_file = b.path("lib/core/debug_session.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+        },
     });
-
-    exp_0_4.root_module.addImport("trace", trace_mod);
-
-    const install_exp_0_4 = b.addInstallArtifact(exp_0_4, .{});
-
-    const build_exp_0_4_step = b.step("exp-0-4-trace-step", "Build experiment 0.4 (single-step trace)");
-    build_exp_0_4_step.dependOn(&install_exp_0_4.step);
-
-    const exp_0_5 = b.addExecutable(.{
-        .name = "exp-0.5-trace-n-step",
-        .root_source_file = b.path("exp/0.5-trace-n-step/main.zig"),
-        .target = target,
-        .optimize = optimize,
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
     });
-
-    exp_0_5.root_module.addImport("trace", trace_mod);
-
-    const install_exp_0_5 = b.addInstallArtifact(exp_0_5, .{});
-
-    const build_exp_0_5_n_step = b.step("exp-0-5-trace-n-step", "Build experiment 0.5 (mutli-step trace)");
-    build_exp_0_5_n_step.dependOn(&install_exp_0_5.step);
-
-    const exp_0_6 = b.addExecutable(.{
-        .name = "exp-0.6-pty-lldb-interactive",
-        .root_source_file = b.path("exp/0.6-pty-lldb-interactive/exp0_6.zig"),
-        .target = target,
-        .optimize = optimize,
+    const event_kind_mod = b.addModule("event_kind", .{
+        .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
     });
 
-    const install_exp_0_6 = b.addInstallArtifact(exp_0_6, .{});
+    const root = b.path(root_rel);
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch |err| {
+        std.debug.panic("failed to open '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer dir.close();
 
-    const build_exp_0_6_pty_lldb_interactive = b.step("exp-0-6-pty-lldb-interactive", "Build experiment 0.6 (pty-lldb-interactive)");
-    build_exp_0_6_pty_lldb_interactive.dependOn(&install_exp_0_6.step);
+    var it = dir.walk(a) catch |err| {
+        std.debug.panic("failed to walk '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer it.deinit();
 
-    const exp_0_7 = b.addExecutable(.{
-        .name = "exp-0.7-dipole-repl",
-        .root_source_file = b.path("exp/0.7-lldb-driver-api/exp0_7.zig"),
-        .target = target,
-        .optimize = optimize,
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+
+        const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
+
+        const t = b.addTest(.{
+            .root_source_file = b.path(rel_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        t.root_module.addImport("debug_session", debug_session_mod);
+        t.root_module.addImport("driver", driver_mod);
+        t.root_module.addImport("event", event_mod);
+        t.root_module.addImport("event_kind", event_kind_mod);
+
+        const run = b.addRunArtifact(t);
+        step.dependOn(&run.step);
+    }
+}
+
+fn addControlTests(
+    b: *std.Build,
+    step: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const event_mod = b.addModule("event", .{
+        .root_source_file = b.path("lib/core/event.zig"),
+    });
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
+    });
+    const debug_session_mod = b.addModule("debug_session.zig", .{
+        .root_source_file = b.path("lib/core/debug_session.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const event_kind_mod = b.addModule("event_kind", .{
+        .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
+    });
+    const projection_mod = b.addModule("projection", .{
+        .root_source_file = b.path("lib/core/semantic/projection.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_registry_mod = b.addModule("semantic_registry", .{
+        .root_source_file = b.path("lib/core/semantic/registry.zig"),
+        .imports = &.{
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const controller_mod = b.addModule("controller", .{
+        .root_source_file = b.path("lib/core/controller.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "debug_session.zig", .module = debug_session_mod },
+            .{ .name = "driver", .module = driver_mod },
+        },
     });
 
-    exp_0_7.root_module.addImport("lib", lldbdriver_mod);
+    const root_rel = "lib/core/control";
+    const root = b.path(root_rel);
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch |err| {
+        std.debug.panic("failed to open '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer dir.close();
 
-    const install_exp_0_7 = b.addInstallArtifact(exp_0_7, .{});
+    var it = dir.walk(a) catch |err| {
+        std.debug.panic("failed to walk '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer it.deinit();
 
-    const build_exp_0_7_dipole_repl = b.step("exp-0-7-dipole-repl-interactive", "Build experiment 0.7 (dipole-repl-interactive)");
-    build_exp_0_7_dipole_repl.dependOn(&install_exp_0_7.step);
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
 
-    // wire installs into the default install step so `zig build` produces zig-out
-    const install = b.getInstallStep();
-    // simple C programs
-    install.dependOn(&install_simple.step);
-    install.dependOn(&install_simple_add.step);
-    install.dependOn(&install_simple_add_infinite_loop.step);
+        const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
 
-    // main dipole executable
-    install.dependOn(&install_dipole.step);
+        const t = b.addTest(.{
+            .root_source_file = b.path(rel_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        t.root_module.addImport("driver", driver_mod);
+        t.root_module.addImport("debug_session", debug_session_mod);
+        t.root_module.addImport("event", event_mod);
+        t.root_module.addImport("event_kind", event_kind_mod);
+        t.root_module.addImport("projection", projection_mod);
+        t.root_module.addImport("semantic_registry", semantic_registry_mod);
+        t.root_module.addImport("semantic_feed", semantic_feed_mod);
+        t.root_module.addImport("controller", controller_mod);
 
-    //dipole-regsview helper
-    install.dependOn(&install_dipole_regsview.step);
+        const run = b.addRunArtifact(t);
+        step.dependOn(&run.step);
+    }
+}
 
-    // experiment executables
-    install.dependOn(&install_exp_0_4.step);
-    install.dependOn(&install_exp_0_5.step);
-    install.dependOn(&install_exp_0_6.step);
-    install.dependOn(&install_exp_0_7.step);
+fn addLearningTargets(
+    b: *std.Build,
+    step: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
 
-    _ = try addSimpleProgram(b, "exit_0_c", "targets/c/exit_0.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "exit_42_c", "targets/c/exit_42.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "exit_0_zig", "targets/zig/exit_0.zig", false, target, optimize);
-    _ = try addSimpleProgram(b, "exit_42_zig", "targets/zig/exit_42.zig", false, target, optimize);
+    const root_rel = "learning_targets";
+    const root = b.path(root_rel);
 
-    _ = try addSimpleProgram(b, "segfault_c", "targets/c/segfault.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "segfault_zig", "targets/zig/segfault.zig", false, target, optimize);
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch {
+        // If the directory doesn't exist, nothing to build.
+        return;
+    };
+    defer dir.close();
 
-    _ = try addSimpleProgram(b, "stdout_no_newline_c", "targets/c/stdout_no_newline.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "stdout_newline_c", "targets/c/stdout_newline.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "stdout_flush_c", "targets/c/stdout_flush.c", true, target, optimize);
-    _ = try addSimpleProgram(b, "stdout_no_newline_zig", "targets/zig/stdout_no_newline.zig", false, target, optimize);
-    _ = try addSimpleProgram(b, "stdout_newline_zig", "targets/zig/stdout_newline.zig", false, target, optimize);
-    _ = try addSimpleProgram(b, "stdout_flush_zig", "targets/zig/stdout_flush.zig", false, target, optimize);
+    var it = dir.iterate();
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .directory) continue;
+        if (entry.name.len == 0 or entry.name[0] == '.') continue;
+
+        const main_rel = std.fs.path.join(a, &.{ root_rel, entry.name, "main.c" }) catch unreachable;
+        std.fs.cwd().access(main_rel, .{}) catch continue; // skip if no main.c
+
+        const exe = b.addExecutable(.{
+            .name = entry.name,
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.addCSourceFile(.{
+            .file = b.path(main_rel),
+            .flags = &.{ "-std=c11" },
+        });
+        exe.linkLibC();
+        b.installArtifact(exe);
+        step.dependOn(&exe.step);
+    }
+}
+
+fn addCliTests(
+    b: *std.Build,
+    cli_step: *std.Build.Step,
+    test_step: *std.Build.Step,
+    root_rel: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    mods: struct {
+        semantic_list: *std.Build.Module,
+        semantic_show: *std.Build.Module,
+        semantic_eval: *std.Build.Module,
+        semantic_render: *std.Build.Module,
+        semantic_registry: *std.Build.Module,
+        projection: *std.Build.Module,
+        event: *std.Build.Module,
+        event_kind: *std.Build.Module,
+        semantic_feed: *std.Build.Module,
+        ui_adapter: *std.Build.Module,
+    },
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const root = b.path(root_rel);
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch |err| {
+        std.debug.panic("failed to open '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer dir.close();
+
+    var it = dir.walk(a) catch |err| {
+        std.debug.panic("failed to walk '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer it.deinit();
+
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+
+        const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
+
+        const t = b.addTest(.{
+            .root_source_file = b.path(rel_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        t.root_module.addImport("semantic_list", mods.semantic_list);
+        t.root_module.addImport("semantic_show", mods.semantic_show);
+        t.root_module.addImport("semantic_eval", mods.semantic_eval);
+        t.root_module.addImport("semantic_render", mods.semantic_render);
+        t.root_module.addImport("semantic_registry", mods.semantic_registry);
+        t.root_module.addImport("semantic_feed", mods.semantic_feed);
+        t.root_module.addImport("ui_adapter", mods.ui_adapter);
+        t.root_module.addImport("projection", mods.projection);
+        t.root_module.addImport("event", mods.event);
+        t.root_module.addImport("event_kind", mods.event_kind);
+
+        const run = b.addRunArtifact(t);
+        test_step.dependOn(&run.step);
+        cli_step.dependOn(&run.step);
+    }
 }
