@@ -15,6 +15,13 @@ fn buildFrames(alloc: std.mem.Allocator) ![]feed.Frame {
     return feed.buildFrames(alloc, &ids, &events);
 }
 
+fn buildKindFrame(alloc: std.mem.Allocator, events: []const ev.Event) !feed.Frame {
+    // v0.2 exemplar: we couple TS4 validation/render checks to event.kind@1.0 only
+    // to exercise the path; not a general semantic dependency.
+    const id = reg.ProjectionId{ .name = "event.kind", .version = .{ .major = 1, .minor = 0 } };
+    return feed.buildFrame(alloc, id, events);
+}
+
 test "TS4-001-001: intent is typed, versioned, and not a projection" {
     comptime {
         const fields = std.meta.fields(intent.Intent);
@@ -193,4 +200,94 @@ test "TS4-002-001: executing validated intent routes through controller boundary
     try std.testing.expectEqual(ev.Category.command, events[0].category);
     try std.testing.expectEqual(ev.Category.backend, events[1].category);
     try std.testing.expect(events[0].event_id < events[1].event_id);
+}
+
+test "TS4-002-002: effects of intent are observable only via events" {
+    const alloc = std.testing.allocator;
+
+    // Run A: route intent through controller/driver to produce events.
+    var session_a = dbs.DebugSession.init(alloc);
+    defer session_a.deinit();
+
+    const observations = [_]drv.DriverObservation{
+        .{ .tx = intent.ping_intent_name },
+        .{ .rx = "pong" },
+    };
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+    var controller = ctl.Controller.init(alloc, &session_a, driver);
+
+    const frames = try buildFrames(alloc);
+    defer {
+        for (frames) |*f| feed.deinitFrame(alloc, f);
+        alloc.free(frames);
+    }
+    const valid = try intent.validateIntent(intent.pingIntent(), frames);
+    try intent.executeIntent(&controller, valid);
+
+    const events_a = session_a.eventsView();
+    var frame_a = try buildKindFrame(alloc, events_a);
+    defer feed.deinitFrame(alloc, &frame_a);
+
+    // Run B: rebuild semantic output from the event log alone (no intent path).
+    var session_b = try dbs.DebugSession.initFromEvents(alloc, events_a);
+    defer session_b.deinit();
+    const events_b = session_b.eventsView();
+    var frame_b = try buildKindFrame(alloc, events_b);
+    defer feed.deinitFrame(alloc, &frame_b);
+
+    try std.testing.expectEqual(events_a.len, events_b.len);
+    try std.testing.expectEqualStrings(frame_a.payload, frame_b.payload);
+    try std.testing.expectEqualStrings(frame_a.projection_id, frame_b.projection_id);
+    try std.testing.expectEqual(frame_a.version, frame_b.version);
+}
+
+test "TS4-002-003: intent is not replayed" {
+    const alloc = std.testing.allocator;
+
+    // Produce an event log via intent execution.
+    var session_a = dbs.DebugSession.init(alloc);
+    defer session_a.deinit();
+
+    const observations = [_]drv.DriverObservation{
+        .{ .tx = intent.ping_intent_name },
+        .{ .rx = "pong" },
+    };
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+    var controller = ctl.Controller.init(alloc, &session_a, driver);
+
+    const frames = try buildFrames(alloc);
+    defer {
+        for (frames) |*f| feed.deinitFrame(alloc, f);
+        alloc.free(frames);
+    }
+    const valid = try intent.validateIntent(intent.pingIntent(), frames);
+    try intent.executeIntent(&controller, valid);
+
+    const events_log = session_a.eventsView();
+    var frame_original = try buildKindFrame(alloc, events_log);
+    defer feed.deinitFrame(alloc, &frame_original);
+
+    // Replay: rebuild semantic output from the saved events without any intent calls.
+    var replay_session = try dbs.DebugSession.initFromEvents(alloc, events_log);
+    defer replay_session.deinit();
+    var replay_frame = try buildKindFrame(alloc, replay_session.eventsView());
+    defer feed.deinitFrame(alloc, &replay_frame);
+
+    try std.testing.expectEqualStrings(frame_original.payload, replay_frame.payload);
+    try std.testing.expectEqualStrings(frame_original.projection_id, replay_frame.projection_id);
+    try std.testing.expectEqual(frame_original.version, replay_frame.version);
 }
