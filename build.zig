@@ -6,6 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run all tests");
     const proj_step = b.step("test-projection", "Run semantic projection tests");
+    const control_step = b.step("test-control", "Run control tests");
     const cli_step = b.step("test-cli", "Run CLI tests");
 
     // Shared modules for CLI and tests.
@@ -84,6 +85,13 @@ pub fn build(b: *std.Build) void {
 
     // Change this to wherever you keep tests.
     addTestsUnder(b, test_step, "lib", target, optimize);
+    addControlTests(
+        b,
+        control_step,
+        target,
+        optimize,
+    );
+    test_step.dependOn(control_step);
 
     // Dedicated projection tests (semantic layer only)
     addSemanticTests(b, proj_step, "lib/core/semantic", target, optimize);
@@ -127,12 +135,42 @@ fn addTestsUnder(
     const event_kind_mod = b.addModule("event_kind", .{
         .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
     });
+    const projection_mod = b.addModule("projection", .{
+        .root_source_file = b.path("lib/core/semantic/projection.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_registry_mod = b.addModule("semantic_registry", .{
+        .root_source_file = b.path("lib/core/semantic/registry.zig"),
+        .imports = &.{
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const controller_mod = b.addModule("controller", .{
+        .root_source_file = b.path("lib/core/controller.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "debug_session.zig", .module = debug_session_mod },
+            .{ .name = "driver", .module = driver_mod },
+        },
+    });
 
     while (it.next() catch |err| {
         std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
     }) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+        if (std.mem.startsWith(u8, entry.path, "core/control/")) continue;
 
         const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
 
@@ -145,6 +183,10 @@ fn addTestsUnder(
         t.root_module.addImport("debug_session", debug_session_mod);
         t.root_module.addImport("event", event_mod);
         t.root_module.addImport("event_kind", event_kind_mod);
+        t.root_module.addImport("projection", projection_mod);
+        t.root_module.addImport("semantic_registry", semantic_registry_mod);
+        t.root_module.addImport("semantic_feed", semantic_feed_mod);
+        t.root_module.addImport("controller", controller_mod);
 
         const run = b.addRunArtifact(t);
         test_step.dependOn(&run.step);
@@ -206,6 +248,100 @@ fn addSemanticTests(
         t.root_module.addImport("driver", driver_mod);
         t.root_module.addImport("event", event_mod);
         t.root_module.addImport("event_kind", event_kind_mod);
+
+        const run = b.addRunArtifact(t);
+        step.dependOn(&run.step);
+    }
+}
+
+fn addControlTests(
+    b: *std.Build,
+    step: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const event_mod = b.addModule("event", .{
+        .root_source_file = b.path("lib/core/event.zig"),
+    });
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
+    });
+    const debug_session_mod = b.addModule("debug_session.zig", .{
+        .root_source_file = b.path("lib/core/debug_session.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const event_kind_mod = b.addModule("event_kind", .{
+        .root_source_file = b.path("lib/core/semantic/event_kind.zig"),
+    });
+    const projection_mod = b.addModule("projection", .{
+        .root_source_file = b.path("lib/core/semantic/projection.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_registry_mod = b.addModule("semantic_registry", .{
+        .root_source_file = b.path("lib/core/semantic/registry.zig"),
+        .imports = &.{
+            .{ .name = "event_kind", .module = event_kind_mod },
+        },
+    });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const controller_mod = b.addModule("controller", .{
+        .root_source_file = b.path("lib/core/controller.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "debug_session.zig", .module = debug_session_mod },
+            .{ .name = "driver", .module = driver_mod },
+        },
+    });
+
+    const root_rel = "lib/core/control";
+    const root = b.path(root_rel);
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch |err| {
+        std.debug.panic("failed to open '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer dir.close();
+
+    var it = dir.walk(a) catch |err| {
+        std.debug.panic("failed to walk '{s}': {s}", .{ root_rel, @errorName(err) });
+    };
+    defer it.deinit();
+
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+
+        const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
+
+        const t = b.addTest(.{
+            .root_source_file = b.path(rel_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        t.root_module.addImport("driver", driver_mod);
+        t.root_module.addImport("debug_session", debug_session_mod);
+        t.root_module.addImport("event", event_mod);
+        t.root_module.addImport("event_kind", event_kind_mod);
+        t.root_module.addImport("projection", projection_mod);
+        t.root_module.addImport("semantic_registry", semantic_registry_mod);
+        t.root_module.addImport("semantic_feed", semantic_feed_mod);
+        t.root_module.addImport("controller", controller_mod);
 
         const run = b.addRunArtifact(t);
         step.dependOn(&run.step);
