@@ -1001,4 +1001,175 @@ This slice establishes the **UI adapter boundary** as a semantic diode: meaning 
 
 ---
 
-## Next Test (RED)
+## TS4-001-001 — Intent is a first-class, immutable value
+**Given**
+- An intent value `I` constructed via the TS4 intent API
+
+**Expect**
+
+`I` has:
+- an explicit intent type
+- an explicit version
+
+`I` is immutable:
+- no setter or mutation API exists
+
+`I` does not reference:
+- Event
+- EventLog
+- Projection
+- Frame
+- Controller
+- Driver
+
+**Notes**
+- This test asserts shape, not behavior
+- Compilation failure is an acceptable enforcement mechanism
+
+**Status:** ✅ Passing
+
+## TS4-001-002 — Intent is not an Event
+**Given**
+- An intent value `I`
+
+**Expect**
+- `I` cannot be appended to the event log
+- No API exists to coerce or serialize `I` as an Event
+- Any attempt to treat `I` as an Event fails at compile time
+
+**What this test proves**
+- Intent and Event are structurally distinct
+- Replayable truth remains event-only
+
+**Status:** ✅ Passing
+
+## TS4-001-003 — Intent validation is pure and deterministic
+**Given**
+- A fixed semantic state derived from event log `L`
+- A fixed intent value `I`
+
+**When**
+- Intent validation is executed twice under identical conditions
+
+**Expect**
+- Both validation results are identical (success or same error)
+- No Events are appended
+- No Controller or Driver interaction occurs
+- No mutation of semantic state occurs
+
+**Notes**
+- Validation may read Frames only
+- This test must assert absence of side effects
+
+**Status:** ✅ Passing
+
+## TS4-001-004 — Invalid intent produces no effects
+**Given**
+- An invalid intent value `I_invalid`
+
+**When**
+- Validation is executed
+
+**Expect**
+- Validation fails with an explicit, typed error
+- No Events are appended
+- No execution path is triggered
+- Semantic outputs remain unchanged
+
+**Notes**
+- Failure is fail-fast
+- No logging or retries occur
+
+**Status:** ✅ Passing
+
+## TS4-001-005 — Valid intent does not execute by itself
+**Given**
+- A valid intent value `I_valid`
+- No authority routing invoked
+
+**When**
+- Validation succeeds
+
+**Expect**
+- No Events are appended
+- No execution occurs
+- No semantic output changes
+
+**What this test proves**
+- Intent carries no authority
+- Validation alone cannot cause effects
+
+**Status:** ✅ Passing
+
+**TS4-002 — Intent Routing & Authority**
+
+## TS4-002-001 — Valid intent routed to authority may produce Events
+**Given**
+- A valid intent value `I_valid`
+- A Controller / Driver configured to accept this intent
+- A fixed initial event log `L`
+
+**When**
+- `I_valid` is routed explicitly to the Controller
+
+**Expect**
+- Zero or more **new Events** are appended to the event log
+- New Events appear after the last event in `L`
+- No other mutation path exists
+
+**Notes**
+- Event contents are not asserted here
+- Only the existence and ordering of new Events matters
+
+**Status:** ✅ Passing
+
+## TS4-002-002 — Effects of intent are observable only via Events
+**Given**
+- Two runs:
+  - Run A: intent routed, Events appended
+  - Run B: identical event log reconstructed without intent
+
+**When**
+- Semantic pipeline (TS2–TS3) is executed over both logs
+
+**Expect**
+- Semantic outputs differ _only if_ Events differ
+- No semantic output depends on the presence or absence of intent
+
+**What this test proves**
+- Replay reconstructs effects, not choices
+- Intent is observationally irrelevant once Events exist
+
+**Status:** ✅ Passing
+
+## TS4-002-003 — Intent is not replayed
+**Given**
+- An event log `L` produced after routing intent `I`
+- A fresh system instance with no intent history
+
+**When**
+- Semantic pipeline is rebuilt from `L`
+
+**Expect**
+- Semantic outputs match the original run
+- No intent validation or execution occurs during replay
+- Replay requires Events only
+
+**Status:** ✅ Passing
+
+**TS4 Scope Guard**
+
+## TS4-900-001 — TS4 introduces no new semantic meaning
+**Given**
+- The projection registry before TS4
+- The projection registry after TS4
+
+**Expect**
+- No new projections are registered
+- No existing projections are modified
+- No new `permitted_fields` appear
+
+**Notes**
+This test guards against semantic leakage from TS4
+
+**Status:** ✅ Passing

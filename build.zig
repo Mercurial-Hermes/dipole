@@ -8,6 +8,7 @@ pub fn build(b: *std.Build) void {
     const proj_step = b.step("test-projection", "Run semantic projection tests");
     const control_step = b.step("test-control", "Run control tests");
     const cli_step = b.step("test-cli", "Run CLI tests");
+    const learning_step = b.step("learning-targets", "Build learning target programs");
 
     // Shared modules for CLI and tests.
     const event_kind_mod = b.addModule("event_kind", .{
@@ -50,6 +51,29 @@ pub fn build(b: *std.Build) void {
             .{ .name = "event_kind", .module = event_kind_mod },
         },
     });
+    const semantic_feed_mod = b.addModule("semantic_feed", .{
+        .root_source_file = b.path("lib/core/semantic/feed.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+            .{ .name = "projection.zig", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
+    const ui_adapter_mod = b.addModule("ui_adapter", .{
+        .root_source_file = b.path("lib/core/semantic/ui_adapter.zig"),
+        .imports = &.{
+            .{ .name = "registry.zig", .module = semantic_registry_mod },
+        },
+    });
+    const semantic_render_mod = b.addModule("semantic_render", .{
+        .root_source_file = b.path("cmd/dipole/cli/semantic_render.zig"),
+        .imports = &.{
+            .{ .name = "semantic_registry", .module = semantic_registry_mod },
+            .{ .name = "semantic_feed", .module = semantic_feed_mod },
+            .{ .name = "ui_adapter", .module = ui_adapter_mod },
+            .{ .name = "event", .module = event_mod },
+        },
+    });
 
     const dipole = b.addExecutable(.{
         .name = "dipole",
@@ -61,9 +85,13 @@ pub fn build(b: *std.Build) void {
     dipole.root_module.addImport("semantic_show", semantic_show_mod);
     dipole.root_module.addImport("semantic_registry", semantic_registry_mod);
     dipole.root_module.addImport("semantic_eval", semantic_eval_mod);
+    dipole.root_module.addImport("semantic_render", semantic_render_mod);
+    dipole.root_module.addImport("semantic_feed", semantic_feed_mod);
+    dipole.root_module.addImport("ui_adapter", ui_adapter_mod);
     dipole.root_module.addImport("projection", projection_mod);
     dipole.root_module.addImport("event", event_mod);
     b.installArtifact(dipole);
+    b.getInstallStep().dependOn(learning_step);
 
     addCliTests(
         b,
@@ -76,10 +104,13 @@ pub fn build(b: *std.Build) void {
             .semantic_list = semantic_list_mod,
             .semantic_show = semantic_show_mod,
             .semantic_eval = semantic_eval_mod,
+            .semantic_render = semantic_render_mod,
             .semantic_registry = semantic_registry_mod,
             .projection = projection_mod,
             .event = event_mod,
             .event_kind = event_kind_mod,
+            .semantic_feed = semantic_feed_mod,
+            .ui_adapter = ui_adapter_mod,
         },
     );
 
@@ -95,6 +126,7 @@ pub fn build(b: *std.Build) void {
 
     // Dedicated projection tests (semantic layer only)
     addSemanticTests(b, proj_step, "lib/core/semantic", target, optimize);
+    addLearningTargets(b, learning_step, target, optimize);
 }
 
 fn addTestsUnder(
@@ -348,6 +380,50 @@ fn addControlTests(
     }
 }
 
+fn addLearningTargets(
+    b: *std.Build,
+    step: *std.Build.Step,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const root_rel = "learning_targets";
+    const root = b.path(root_rel);
+
+    var dir = std.fs.openDirAbsolute(root.getPath(b), .{ .iterate = true }) catch {
+        // If the directory doesn't exist, nothing to build.
+        return;
+    };
+    defer dir.close();
+
+    var it = dir.iterate();
+    while (it.next() catch |err| {
+        std.debug.panic("walk error in '{s}': {s}", .{ root_rel, @errorName(err) });
+    }) |entry| {
+        if (entry.kind != .directory) continue;
+        if (entry.name.len == 0 or entry.name[0] == '.') continue;
+
+        const main_rel = std.fs.path.join(a, &.{ root_rel, entry.name, "main.c" }) catch unreachable;
+        std.fs.cwd().access(main_rel, .{}) catch continue; // skip if no main.c
+
+        const exe = b.addExecutable(.{
+            .name = entry.name,
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.addCSourceFile(.{
+            .file = b.path(main_rel),
+            .flags = &.{ "-std=c11" },
+        });
+        exe.linkLibC();
+        b.installArtifact(exe);
+        step.dependOn(&exe.step);
+    }
+}
+
 fn addCliTests(
     b: *std.Build,
     cli_step: *std.Build.Step,
@@ -359,10 +435,13 @@ fn addCliTests(
         semantic_list: *std.Build.Module,
         semantic_show: *std.Build.Module,
         semantic_eval: *std.Build.Module,
+        semantic_render: *std.Build.Module,
         semantic_registry: *std.Build.Module,
         projection: *std.Build.Module,
         event: *std.Build.Module,
         event_kind: *std.Build.Module,
+        semantic_feed: *std.Build.Module,
+        ui_adapter: *std.Build.Module,
     },
 ) void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -396,7 +475,10 @@ fn addCliTests(
         t.root_module.addImport("semantic_list", mods.semantic_list);
         t.root_module.addImport("semantic_show", mods.semantic_show);
         t.root_module.addImport("semantic_eval", mods.semantic_eval);
+        t.root_module.addImport("semantic_render", mods.semantic_render);
         t.root_module.addImport("semantic_registry", mods.semantic_registry);
+        t.root_module.addImport("semantic_feed", mods.semantic_feed);
+        t.root_module.addImport("ui_adapter", mods.ui_adapter);
         t.root_module.addImport("projection", mods.projection);
         t.root_module.addImport("event", mods.event);
         t.root_module.addImport("event_kind", mods.event_kind);

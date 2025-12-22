@@ -105,6 +105,24 @@ const projections = [_]ProjectionDef{
         .output_kind = EventKind,
         .permitted_fields = &.{.category},
     },
+    .{
+        .id = .{
+            .name = "breakpoint.list",
+            .version = .{ .major = 1, .minor = 0 },
+        },
+        .description = "Opaque breakpoint snapshot list (latest snapshot payload wins)",
+        .output_kind = []const u8,
+        .permitted_fields = &.{.category},
+    },
+    .{
+        .id = .{
+            .name = "register.snapshot",
+            .version = .{ .major = 1, .minor = 0 },
+        },
+        .description = "Opaque register snapshot (latest snapshot payload wins)",
+        .output_kind = []const u8,
+        .permitted_fields = &.{.category},
+    },
 };
 
 const projection_meta = blk: {

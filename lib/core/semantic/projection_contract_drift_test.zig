@@ -189,6 +189,12 @@ test "TS2-003-003: drift harness determinism (registry projections repeatable)" 
             try std.testing.expectEqualStrings(bytes1, bytes2);
 
             try expectEventsEqual(&base_events, &log_copy);
+        } else if (std.mem.eql(u8, def.id.name, "breakpoint.list")) {
+            // Breakpoint list projection is opaque and snapshot-driven; ensure inputs remain unchanged.
+            try expectEventsEqual(&base_events, &log_copy);
+        } else if (std.mem.eql(u8, def.id.name, "register.snapshot")) {
+            // Register snapshot projection is opaque and snapshot-driven; ensure inputs remain unchanged.
+            try expectEventsEqual(&base_events, &log_copy);
         } else {
             return error.MissingHarnessProjection;
         }
