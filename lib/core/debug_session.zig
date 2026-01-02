@@ -22,11 +22,30 @@ pub const DebugSession = struct {
     pub fn initFromEvents(allocator: std.mem.Allocator, events: []const Event) !DebugSession {
         var session = DebugSession.init(allocator);
         errdefer session.deinit();
-        try session.events.appendSlice(allocator, events);
+        for (events) |e| {
+            var payload_copy: []const u8 = &.{};
+            var owned = false;
+            if (e.payload.len > 0) {
+                payload_copy = try allocator.dupe(u8, e.payload);
+                owned = true;
+            }
+            try session.events.append(allocator, .{
+                .event_id = e.event_id,
+                .category = e.category,
+                .timestamp = e.timestamp,
+                .payload = payload_copy,
+                .payload_owned = owned,
+            });
+        }
         return session;
     }
 
     pub fn deinit(self: *DebugSession) void {
+        for (self.events.items) |e| {
+            if (e.payload_owned and e.payload.len > 0) {
+                self.allocator.free(e.payload);
+            }
+        }
         self.events.deinit(self.allocator);
     }
 
@@ -43,6 +62,21 @@ pub const DebugSession = struct {
             .event_id = event_id,
             .category = category,
             .timestamp = null,
+        });
+    }
+
+    pub fn appendWithPayload(
+        self: *DebugSession,
+        category: EventMod.Category,
+        payload: []const u8,
+    ) !void {
+        const event_id = self.events.items.len;
+        try self.events.append(self.allocator, .{
+            .event_id = event_id,
+            .category = category,
+            .timestamp = null,
+            .payload = payload,
+            .payload_owned = true,
         });
     }
 

@@ -19,6 +19,9 @@ This document bridges:
 - `interaction-flow.md`
 - `semantic-derivation.md`
 
+Implementation note: the current tmux/REPL work is broker-driven and raw.
+Panes are dumb terminals wired to the broker and must not access LLDB directly.
+
 ---
 
 ## Core Principle

@@ -41,8 +41,8 @@ pub const LLDBLauncher = struct {
 
         var lldb_pid: c.pid_t = 0;
 
-        var pid_buf: [32]u8 = undefined;
-        const pid_str = try std.fmt.bufPrint(&pid_buf, "{d}", .{target_pid});
+        var pid_buf: [32:0]u8 = undefined;
+        const pid_str = try std.fmt.bufPrintZ(&pid_buf, "{d}", .{target_pid});
 
         const argv = [_:null][*c]const u8{
             "lldb",

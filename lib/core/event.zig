@@ -20,4 +20,6 @@ pub const Event = struct {
     timestamp: ?std.time.Instant = null,
     /// Optional opaque payload for snapshot-style events; empty by default.
     payload: []const u8 = &.{},
+    /// Whether DebugSession owns payload memory.
+    payload_owned: bool = false,
 };

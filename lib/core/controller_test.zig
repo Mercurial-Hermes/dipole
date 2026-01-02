@@ -44,7 +44,17 @@ fn fakePoll(ctx: *anyopaque) ?drv.DriverObservation {
 
     const obs = self.observations[self.next_obs];
     self.next_obs += 1;
-    return obs;
+    return switch (obs) {
+        .tx => |bytes| blk: {
+            const dup = self.alloc.dupe(u8, bytes) catch unreachable;
+            break :blk .{ .tx = dup };
+        },
+        .rx => |bytes| blk: {
+            const dup = self.alloc.dupe(u8, bytes) catch unreachable;
+            break :blk .{ .rx = dup };
+        },
+        .prompt => .prompt,
+    };
 }
 
 test "controller ingests raw driver observations as ordered events" {

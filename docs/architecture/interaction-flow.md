@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document describes the **end-to-end interaction flow** in Dipole, from user intent to visible outcome.
+This document defines the **authoritative interaction flow** in Dipole, from user intent to visible outcome.
 
 It exists to:
 - clarify responsibility boundaries
 - prevent logic leakage between layers
 - provide a shared mental model for implementation
-- keep REPL, Controller, and Debugger roles clean
+- constrain Controller and CLI behaviour
 
 This is a **conceptual flow**, not an API or threading model.
 
@@ -28,7 +28,7 @@ No layer violates this direction.
 
 User
 ↓
-REPL / UI
+CLI / REPL / UI
 ↓
 Controller
 ↓
@@ -42,10 +42,28 @@ Derived State
 ↓
 Semantic Derivation
 ↓
-Rendering (tmux / REPL output)
+Rendering (tmux / REPL / Dojo)
 
 
 Each arrow represents a **single responsibility handoff**.
+
+---
+
+## CLI Responsibility (Intent Boundary)
+
+The CLI / REPL is responsible for:
+
+- reading user input (argv, stdin)
+- validating syntax
+- expressing **intent**
+
+The CLI:
+- does not talk to the debugger
+- does not own execution
+- does not admit events
+- does not interpret output
+
+Its job ends once intent is handed to the Controller.
 
 ---
 
@@ -57,171 +75,144 @@ Each arrow represents a **single responsibility handoff**.
 
 ### 1. User Input
 
-The user enters a command via the REPL:
+The user enters a command:
 
-- step
+`step`
 
 
-This is **raw human input**, with no backend semantics.
+This is **raw human input** with no backend semantics.
 
 ---
 
-### 2. REPL: Intent Parsing
+### 2. CLI / REPL: Intent Formation
 
-The REPL:
+The CLI:
 - parses the input
-- validates syntax
-- converts it into a **Command Intent**
+- validates it
+- expresses a **Command Intent**
 
 Example (conceptual):
 
-- CommandIntent.Step
+`CommandIntent.Step`
 
 
-The REPL:
+The CLI:
 - does not know how stepping works
-- does not talk to the debugger
-- does not inspect session internals
-
-Its job ends here.
+- does not know which debugger is used
+- does not inspect session state
 
 ---
 
 ### 3. Controller: Intent Routing
 
-The Controller receives the `CommandIntent`.
+The Controller receives the Command Intent.
 
 Responsibilities:
 - check session mode (live vs recorded)
-- check ExecutionSource capabilities
-- route intent appropriately
+- check execution source capabilities
+- route intent downward
 
 The Controller may:
 - accept the intent
-- reject it (e.g. unsupported in replay)
-- transform it into lower-level requests
+- reject it (unsupported)
+- translate it into lower-level requests
 
-The Controller does **not**:
-- interpret debugger output
-- mutate session state
-- derive meaning
+The Controller does **not** interpret results.
 
-### Controller Constraints (Non-Negotiable)
+---
+
+## Controller Constraints (Non-Negotiable)
 
 The Controller is a **side-effect and ingress boundary**, not an interpreter.
 
-Its responsibility is limited to routing intent downward and admitting
-externally observed effects upward as Events.
+### The Controller MUST
 
-#### The Controller MUST
+- be the sole reader and writer of debugger transports
+- forward intent to the ExecutionSource
+- initiate external interaction
+- capture **all externally observed effects**
+- preserve exact observation order
+- admit observations as immutable Events
+- assign deterministic sequence identifiers
 
-- forward user intent to the appropriate ExecutionSource
-- initiate external interaction (e.g. debugger commands, replay advancement)
-- capture **raw observations** resulting from that interaction as Events
-- preserve the exact ordering in which observations are made
-- assign deterministic, monotonic sequence identifiers to admitted Events
-
-#### The Controller MUST NOT
+### The Controller MUST NOT
 
 - parse debugger output
-- interpret or classify debugger responses
-- infer execution state (e.g. stopped, running, breakpoint hit)
 - recognise prompts or markers semantically
-- buffer, coalesce, reorder, or suppress events
-- mutate DebugSession internals or derived state
-- emit synthetic events to “improve” the model
-- discard “boring”, noisy, or repetitive output
+- infer execution state
+- suppress or coalesce observations
+- reorder events
+- emit synthetic or “helpful” events
+- mutate DebugSession internals
+- update UI or derived state
 
-All interpretation, cleanup, and meaning-making belongs exclusively in
-Derived State and Semantic Derivation layers.
-
-Violations of these constraints collapse the separation between truth and meaning
-and are considered architectural errors.
-
+Any such behaviour is an architectural violation.
 
 ---
 
-### 4. ExecutionSource: External Interaction
+## 4. ExecutionSource: External Interaction
 
 For a **Live Execution Source**:
-
-- the Controller forwards the request
-- the ExecutionSource translates intent into debugger commands
-- the debugger executes the command
+- Controller forwards intent
+- debugger executes commands
+- observations are produced
 
 For a **Recorded Execution Source**:
+- Controller advances replay
+- observations are replayed
 
-- the Controller advances replay position
-- no external process is involved
+In both cases:
 
-In both cases, the ExecutionSource’s role is the same:
-
-> **Observe reality and emit events.**
+> The ExecutionSource **observes reality** and produces observations.
 
 ---
 
-### 5. Event Emission
+## 5. Event Emission
 
-As a result of the action, the ExecutionSource emits one or more **Events**, such as:
+Observations are admitted as **Events**:
 
-- execution resumed
-- execution stopped
-- breakpoint hit
-- signal received
-- error occurred
-
-Events are:
 - immutable
 - ordered
 - authoritative
+- backend-agnostic
 
 No interpretation occurs here.
 
 ---
 
-### 6. DebugSession: Truth Recording
+## 6. DebugSession: Truth Recording
 
 The DebugSession:
-- consumes emitted Events
-- appends them to the session timeline
-- updates replay position
-- records ordering
+- appends Events
+- preserves total order
+- provides immutable history
 
-The DebugSession may:
-- request a Snapshot (based on policy)
-- associate snapshots with events
+The DebugSession:
+- does not interpret
+- does not render
+- does not control execution
 
-The DebugSession does **not**:
-- derive explanations
-- update UI state
-- know who issued the command
+It records truth — nothing else.
 
 ---
 
-### 7. Snapshot Capture (Optional)
+## 7. Snapshot Capture (Optional)
 
-If a semantic moment is detected (e.g. stop event):
+At defined moments:
+- a Snapshot may be captured
+- snapshot data is immutable
+- snapshots are associated with Events
 
-- the DebugSession requests a Snapshot
-- snapshot data is captured
-- snapshot is recorded as an event
-
-Snapshots are immutable historical anchors.
+Snapshots are historical anchors.
 
 ---
 
-### 8. Derived State Recalculation
+## 8. Derived State Recalculation
 
-Derived State is recalculated based on:
-- current replay position
-- available snapshots
+Derived State is recalculated from:
 - event history
-
-Examples:
-- current thread/frame
-- visible registers
-- disassembly view
-- stack view
+- snapshots
+- replay position
 
 Derived State is:
 - ephemeral
@@ -230,93 +221,75 @@ Derived State is:
 
 ---
 
-### 9. Semantic Derivation
+## 9. Semantic Derivation
 
-Semantic derivation processes:
-- events
-- snapshots
-- derived state
+Semantic Derivation:
+- reads Events and Snapshots
+- produces explanations and narratives
+- never mutates truth
 
-to produce:
-- explanations
-- annotations
-- causal narratives
-
-Semantic data:
-- does not mutate truth
-- may evolve independently
-- may be incomplete or provisional
+Semantics may be partial or provisional.
 
 ---
 
-### 10. Rendering
+## 10. Rendering
 
-UI components (tmux panes, REPL output):
+UI components:
 - read derived state
 - read semantic annotations
 - render views
 
 Rendering:
-- does not affect session truth
 - does not emit events
-- may be refreshed freely
-
-The user sees the result of their action.
-
----
-
-## Recorded Session Flow (Key Difference)
-
-In a recorded session:
-
-- the REPL still emits intent
-- the Controller still routes it
-- the ExecutionSource advances replay
-- events are replayed, not generated
-- snapshots are authoritative
-
-The flow remains identical in shape.
-
-Only the **ExecutionSource behaviour** changes.
+- does not affect truth
+- may refresh freely
 
 ---
 
-## Error Handling Flow
+## Recorded Session Flow
 
-Errors are treated as **events**.
+Recorded sessions follow the **exact same flow**.
 
-Examples:
-- debugger communication failure
-- unsupported command
+Only the ExecutionSource behaviour differs.
+
+This symmetry is a core design goal.
+
+---
+
+## Error Handling
+
+Errors are **Events**.
+
+- debugger failures
+- unsupported commands
 - dataset corruption
 
 Errors:
 - are emitted upward
-- recorded in the session
+- recorded immutably
 - rendered as feedback
 
-Errors are never handled silently.
+Errors are never swallowed.
 
 ---
 
-## What This Flow Explicitly Prevents
-
-This interaction model forbids:
+## What This Flow Explicitly Forbids
 
 - UI talking directly to the debugger
-- Controller mutating session state
-- REPL parsing debugger output
-- DebugSession interpreting meaning
-- Semantic logic emitting events
+- multiple readers of debugger transports
+- Controller interpreting output
+- CLI admitting events
+- DebugSession inferring meaning
+- Semantic logic mutating truth
 
-Each concern stays in its lane.
+Any shortcut breaks replayability and pedagogy.
 
 ---
 
 ## Mental Model Summary
 
-- REPL expresses intent
-- Controller routes intent
+- CLI expresses intent
+- Controller enforces order
 - ExecutionSource observes reality
 - DebugSession records truth
 - Derived State presents views
@@ -329,13 +302,10 @@ No shortcuts. No exceptions.
 
 ## Why This Matters
 
-By enforcing this flow:
-
+This flow ensures:
 - live debugging stays responsive
 - recorded sessions remain deterministic
-- pedagogy becomes first-class
+- pedagogy is first-class
 - architecture remains legible over time
 
-This document should be used as a **reference during implementation and code review**.
-
-If a change cannot be explained using this flow, it likely does not belong in the core.
+If a change cannot be explained using this flow, it does not belong in the core.

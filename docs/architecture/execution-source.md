@@ -101,6 +101,9 @@ Characteristics:
 - execution control commands are meaningful
 - ordering reflects observation, not determinism
 
+Implementation invariant: LLDB PTY I/O is owned by a single broker loop.
+UI panes and helpers must not read or write the PTY directly.
+
 Use cases:
 - real-world debugging
 - exploratory investigation
