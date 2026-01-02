@@ -74,6 +74,24 @@ pub fn build(b: *std.Build) void {
             .{ .name = "event", .module = event_mod },
         },
     });
+    const driver_mod = b.addModule("driver", .{
+        .root_source_file = b.path("lib/core/driver.zig"),
+    });
+    const pty_mod = b.addModule("pty", .{
+        .root_source_file = b.path("lib/core/debugger/pty.zig"),
+    });
+    const lldb_launcher_mod = b.addModule("lldb_launcher", .{
+        .root_source_file = b.path("lib/core/debugger/lldb_launcher.zig"),
+        .imports = &.{
+            .{ .name = "pty", .module = pty_mod },
+        },
+    });
+    const pty_raw_driver_mod = b.addModule("pty_raw_driver", .{
+        .root_source_file = b.path("lib/core/debugger/pty_raw_driver.zig"),
+        .imports = &.{
+            .{ .name = "driver", .module = driver_mod },
+        },
+    });
 
     const dipole = b.addExecutable(.{
         .name = "dipole",
@@ -90,6 +108,8 @@ pub fn build(b: *std.Build) void {
     dipole.root_module.addImport("ui_adapter", ui_adapter_mod);
     dipole.root_module.addImport("projection", projection_mod);
     dipole.root_module.addImport("event", event_mod);
+    dipole.root_module.addImport("lldb_launcher", lldb_launcher_mod);
+    dipole.root_module.addImport("pty_raw_driver", pty_raw_driver_mod);
     b.installArtifact(dipole);
     b.getInstallStep().dependOn(learning_step);
 
