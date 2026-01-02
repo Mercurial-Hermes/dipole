@@ -12,6 +12,8 @@ Its goal is to:
 
 This is a **boundary map**, not a directory layout or API specification.
 
+It is a **design contract**.
+
 ---
 
 ## High-Level Architecture
@@ -52,24 +54,25 @@ It models immutable truth and enforces architectural invariants.
 ### Responsibilities
 
 The kernel owns:
-- Debug Session model
-- Event Model
-- Snapshot Model
-- Dataset structural model
+- the DebugSession model
+- the Event model
+- the Snapshot model
+- dataset structural models
 - ordering and immutability rules
 
 ### Constraints
 
 The kernel must **not** know about:
 - debugger backends (e.g. LLDB)
-- terminals or UI frameworks
-- disassembly or symbols
-- pedagogy or explanations
+- terminals, PTYs, or UI frameworks
+- CLI, REPL, or user input
+- derived state or projections
+- semantic interpretation or pedagogy
 - execution control semantics
 
 The kernel models **what happened**, not **how it happened** or **what it means**.
 
-This layer should remain small and aggressively defended.
+This layer must remain small and aggressively defended.
 
 ---
 
@@ -81,18 +84,18 @@ They adapt:
 - live debugger backends, or
 - recorded datasets
 
-into a stream of immutable events.
+into a stream of immutable observations.
 
 ### Types of Execution Sources
 
 - **Live Execution Source**
   - backed by a real debugger (e.g. LLDB)
-  - open-ended event stream
-  - asynchronous observation
+  - open-ended, asynchronous observation stream
+  - nondeterministic timing
 
 - **Recorded Execution Source**
   - backed by a Debug Capture Dataset
-  - finite, deterministic event stream
+  - finite, deterministic observation stream
   - replay-only semantics
 
 ### Dependency Rule
@@ -100,25 +103,40 @@ into a stream of immutable events.
 Execution Sources may depend on the kernel.  
 The kernel must never depend on Execution Sources.
 
-This prevents debugger-specific logic from polluting the core.
+Debugger-specific logic must never leak upward.
 
 ---
 
 ## Controller
 
-The Controller is not a kernel component, not an execution source, and not a semantic layer. It is a routing and observation boundary.
+The **Controller** is the **exclusive ingress boundary** between external execution and session truth.
+
+It is not part of the kernel, not an execution source, and not a semantic layer.
+
+It exists to **enforce ordering, exclusivity, and admission**.
 
 ### Does
 
-- owns side effects (sending commands outward)
-- owns observation capture (turning I/O into Events)
+The Controller:
+- owns all debugger side effects
+- owns the debugger transport (e.g. LLDB PTY) as a **single-reader / single-writer**
+- routes user intent downward to execution sources
+- admits externally observed effects upward as Events
+- preserves a total, deterministic ordering of observations
 
 ### Does Not
 
-- interpret
-- derive
-- store state
-- mutate the DebugSession directly
+The Controller does **not**:
+- parse CLI arguments
+- interpret debugger output
+- derive semantic meaning
+- store mutable state
+- mutate DebugSession internals directly
+- render UI or control presentation
+- bypass the DebugSession
+
+UI panes (REPL, tmux, Dojo) must never talk to LLDB directly.  
+All debugger interaction flows **through the Controller**.
 
 ---
 
@@ -143,7 +161,7 @@ All derived state is:
 - reconstructible
 - discardable
 
-Deleting this entire layer must not affect correctness.
+Deleting this entire layer must not affect correctness or truth.
 
 ---
 
@@ -156,18 +174,19 @@ This layer is where Dipole derives **meaning and explanation**.
 Semantic Derivation produces:
 - causal explanations
 - register change narratives
-- call/return interpretations
+- call / return interpretations
 - pedagogical annotations
 - architecture-aware reasoning
 
 ### Key Constraint
 
-Semantics:
+Semantic logic:
 - must never mutate events or snapshots
 - must never emit events
+- must never control execution
 - may evolve independently of captures
 
-Truth and interpretation must remain separate.
+Truth and interpretation must remain strictly separated.
 
 ---
 
@@ -183,19 +202,20 @@ This layer includes all user-facing systems:
 ### Responsibilities
 
 UI modules:
+- express user intent
 - navigate sessions
 - render projections
-- select replay positions
-- surface semantics
+- surface semantic explanations
 
 ### Constraints
 
 UI must never:
 - mutate kernel data
 - emit events directly
+- read or write debugger transports
 - embed assumptions about execution sources
 
-UI is a consumer of truth, not a producer.
+UI is a **consumer of truth**, not a producer.
 
 ---
 
@@ -205,7 +225,7 @@ Talking to a debugger is **essential**, but the debugger is **not the kernel**.
 
 The debugger is:
 - an Execution Source
-- a producer of events
+- a producer of observations
 - an adapter to external reality
 
 The Debug Session Core remains the architectural centre.
@@ -213,6 +233,7 @@ The Debug Session Core remains the architectural centre.
 This distinction enables:
 - debugger-agnostic design
 - dataset-backed pedagogy
+- replay and auditability
 - long-term maintainability
 
 ---
@@ -221,10 +242,11 @@ This distinction enables:
 
 1. The kernel depends on nothing
 2. Execution Sources depend on the kernel
-3. Derived State depends on kernel and sources
-4. Semantic Derivation depends on kernel and derived state
-5. UI depends on everything above it
-6. No downward dependencies are allowed
+3. Controllers depend on execution sources and the kernel
+4. Derived State depends on the kernel and controllers
+5. Semantic Derivation depends on kernel and derived state
+6. UI depends on everything above it
+7. No downward dependencies are allowed
 
 Violating these rules introduces hidden coupling and architectural decay.
 
@@ -235,8 +257,9 @@ Violating these rules introduces hidden coupling and architectural decay.
 This boundary map defines how Dipole remains:
 - understandable
 - extensible
+- replayable
 - pedagogically powerful
 
-By enforcing a small kernel, strict dependency direction, and clear separation between truth, interpretation, and presentation, Dipole can grow without losing coherence.
+Any change that cannot be justified within this map is an architectural error.
 
-This document should be treated as a **design contract**, not a suggestion.
+This document should be treated as a **hard design contract**, not a suggestion.

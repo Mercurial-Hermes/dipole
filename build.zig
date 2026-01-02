@@ -23,6 +23,12 @@ pub fn build(b: *std.Build) void {
     const event_mod = b.addModule("event", .{
         .root_source_file = b.path("lib/core/event.zig"),
     });
+    const debug_session_mod = b.addModule("debug_session", .{
+        .root_source_file = b.path("lib/core/debug_session.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+        },
+    });
     const semantic_list_mod = b.addModule("semantic_list", .{
         .root_source_file = b.path("cmd/dipole/cli/semantic_list.zig"),
         .imports = &.{
@@ -92,6 +98,50 @@ pub fn build(b: *std.Build) void {
             .{ .name = "driver", .module = driver_mod },
         },
     });
+    const request_envelope_mod = b.addModule("request_envelope", .{
+        .root_source_file = b.path("lib/core/transport/request_envelope.zig"),
+    });
+    const fd_utils_mod = b.addModule("fd_utils", .{
+        .root_source_file = b.path("lib/core/transport/fd_utils.zig"),
+    });
+    const controller_mod = b.addModule("controller", .{
+        .root_source_file = b.path("lib/core/controller.zig"),
+        .imports = &.{
+            .{ .name = "event", .module = event_mod },
+            .{ .name = "debug_session.zig", .module = debug_session_mod },
+            .{ .name = "driver", .module = driver_mod },
+            .{ .name = "request_envelope", .module = request_envelope_mod },
+        },
+    });
+    const pane_runtime_mod = b.addModule("pane_runtime", .{
+        .root_source_file = b.path("cmd/dipole/ui/pane_runtime.zig"),
+        .imports = &.{
+            .{ .name = "request_envelope", .module = request_envelope_mod },
+        },
+    });
+    const tmux_session_mod = b.addModule("tmux_session", .{
+        .root_source_file = b.path("cmd/dipole/ui/tmux_session.zig"),
+    });
+    const attach_session_impl_mod = b.addModule("attach_session_impl", .{
+        .root_source_file = b.path("cmd/dipole/cli/attach_session_impl.zig"),
+        .imports = &.{
+            .{ .name = "controller", .module = controller_mod },
+            .{ .name = "debug_session", .module = debug_session_mod },
+            .{ .name = "lldb_launcher", .module = lldb_launcher_mod },
+            .{ .name = "pty_raw_driver", .module = pty_raw_driver_mod },
+            .{ .name = "request_envelope", .module = request_envelope_mod },
+            .{ .name = "fd_utils", .module = fd_utils_mod },
+            .{ .name = "pane_runtime", .module = pane_runtime_mod },
+            .{ .name = "tmux_session", .module = tmux_session_mod },
+        },
+    });
+    const attach_session_mod = b.addModule("attach_session", .{
+        .root_source_file = b.path("cmd/dipole/cli/attach_session.zig"),
+        .imports = &.{
+            .{ .name = "attach_session_impl", .module = attach_session_impl_mod },
+            .{ .name = "pane_runtime", .module = pane_runtime_mod },
+        },
+    });
 
     const dipole = b.addExecutable(.{
         .name = "dipole",
@@ -108,6 +158,9 @@ pub fn build(b: *std.Build) void {
     dipole.root_module.addImport("ui_adapter", ui_adapter_mod);
     dipole.root_module.addImport("projection", projection_mod);
     dipole.root_module.addImport("event", event_mod);
+    dipole.root_module.addImport("debug_session", debug_session_mod);
+    dipole.root_module.addImport("controller", controller_mod);
+    dipole.root_module.addImport("attach_session", attach_session_mod);
     dipole.root_module.addImport("lldb_launcher", lldb_launcher_mod);
     dipole.root_module.addImport("pty_raw_driver", pty_raw_driver_mod);
     b.installArtifact(dipole);
@@ -125,13 +178,70 @@ pub fn build(b: *std.Build) void {
             .semantic_show = semantic_show_mod,
             .semantic_eval = semantic_eval_mod,
             .semantic_render = semantic_render_mod,
-            .semantic_registry = semantic_registry_mod,
-            .projection = projection_mod,
-            .event = event_mod,
-            .event_kind = event_kind_mod,
-            .semantic_feed = semantic_feed_mod,
-            .ui_adapter = ui_adapter_mod,
-        },
+        .semantic_registry = semantic_registry_mod,
+        .projection = projection_mod,
+        .event = event_mod,
+        .event_kind = event_kind_mod,
+        .semantic_feed = semantic_feed_mod,
+        .ui_adapter = ui_adapter_mod,
+        .attach_session = attach_session_mod,
+        .controller = controller_mod,
+        .request_envelope = request_envelope_mod,
+        .pane_runtime = pane_runtime_mod,
+        .fd_utils = fd_utils_mod,
+    },
+    );
+
+    addCliTests(
+        b,
+        cli_step,
+        test_step,
+        "cmd/dipole/ui",
+        target,
+        optimize,
+        .{
+            .semantic_list = semantic_list_mod,
+            .semantic_show = semantic_show_mod,
+            .semantic_eval = semantic_eval_mod,
+            .semantic_render = semantic_render_mod,
+        .semantic_registry = semantic_registry_mod,
+        .projection = projection_mod,
+        .event = event_mod,
+        .event_kind = event_kind_mod,
+        .semantic_feed = semantic_feed_mod,
+        .ui_adapter = ui_adapter_mod,
+        .attach_session = attach_session_mod,
+        .controller = controller_mod,
+        .request_envelope = request_envelope_mod,
+        .pane_runtime = pane_runtime_mod,
+        .fd_utils = fd_utils_mod,
+    },
+    );
+
+    addCliTests(
+        b,
+        cli_step,
+        test_step,
+        "lib/core/transport",
+        target,
+        optimize,
+        .{
+            .semantic_list = semantic_list_mod,
+            .semantic_show = semantic_show_mod,
+            .semantic_eval = semantic_eval_mod,
+            .semantic_render = semantic_render_mod,
+        .semantic_registry = semantic_registry_mod,
+        .projection = projection_mod,
+        .event = event_mod,
+        .event_kind = event_kind_mod,
+        .semantic_feed = semantic_feed_mod,
+        .ui_adapter = ui_adapter_mod,
+        .attach_session = attach_session_mod,
+        .controller = controller_mod,
+        .request_envelope = request_envelope_mod,
+        .pane_runtime = pane_runtime_mod,
+        .fd_utils = fd_utils_mod,
+    },
     );
 
     // Change this to wherever you keep tests.
@@ -223,6 +333,7 @@ fn addTestsUnder(
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         if (std.mem.startsWith(u8, entry.path, "core/control/")) continue;
+        if (std.mem.startsWith(u8, entry.path, "core/transport/")) continue;
 
         const rel_path = std.fs.path.join(a, &.{ root_rel, entry.path }) catch unreachable;
 
@@ -462,6 +573,11 @@ fn addCliTests(
         event_kind: *std.Build.Module,
         semantic_feed: *std.Build.Module,
         ui_adapter: *std.Build.Module,
+        attach_session: *std.Build.Module,
+        controller: *std.Build.Module,
+        request_envelope: *std.Build.Module,
+        pane_runtime: *std.Build.Module,
+        fd_utils: *std.Build.Module,
     },
 ) void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -502,6 +618,11 @@ fn addCliTests(
         t.root_module.addImport("projection", mods.projection);
         t.root_module.addImport("event", mods.event);
         t.root_module.addImport("event_kind", mods.event_kind);
+        t.root_module.addImport("attach_session", mods.attach_session);
+        t.root_module.addImport("controller", mods.controller);
+        t.root_module.addImport("request_envelope", mods.request_envelope);
+        t.root_module.addImport("pane_runtime", mods.pane_runtime);
+        t.root_module.addImport("fd_utils", mods.fd_utils);
 
         const run = b.addRunArtifact(t);
         test_step.dependOn(&run.step);
