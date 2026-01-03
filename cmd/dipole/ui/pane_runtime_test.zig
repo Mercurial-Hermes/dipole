@@ -29,6 +29,14 @@ test "repl parser maps commands to lldb strings" {
     const cont_cmd = (try pane_runtime.parseReplLine(alloc, "continue")).?.command;
     defer alloc.free(cont_cmd);
     try std.testing.expectEqualStrings("process continue\n", cont_cmd);
+
+    const regs_cmd = (try pane_runtime.parseReplLine(alloc, "regs")).?.command;
+    defer alloc.free(regs_cmd);
+    try std.testing.expectEqualStrings("register read\n", regs_cmd);
+
+    const snap_cmd = (try pane_runtime.parseReplLine(alloc, "snapshot regs")).?.command;
+    defer alloc.free(snap_cmd);
+    try std.testing.expectEqualStrings("register read\n", snap_cmd);
 }
 
 test "repl parser maps breakpoint file:line" {
