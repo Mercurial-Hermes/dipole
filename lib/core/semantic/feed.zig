@@ -1,3 +1,5 @@
+// lib/core/semantic/feed.zig
+
 const std = @import("std");
 const reg = @import("registry.zig");
 const proj = @import("projection.zig");
@@ -88,7 +90,13 @@ fn projectToFrame(alloc: std.mem.Allocator, id: reg.ProjectionId, events: []cons
             // Find most recent snapshot event.
             var last: ?[]const u8 = null;
             for (events) |e| {
-                if (e.category == .snapshot) last = e.payload;
+                if (e.category != .snapshot) continue;
+                if (e.snapshot) |snap| {
+                    if (snap.snapshot_kind == .registers) continue;
+                    last = snap.payload;
+                    continue;
+                }
+                last = e.payload;
             }
             if (last) |p| {
                 break :blk try alloc.dupe(u8, p);
@@ -107,7 +115,13 @@ fn projectToFrame(alloc: std.mem.Allocator, id: reg.ProjectionId, events: []cons
         const payload = blk: {
             var last: ?[]const u8 = null;
             for (events) |e| {
-                if (e.category == .snapshot) last = e.payload;
+                if (e.category != .snapshot) continue;
+                if (e.snapshot) |snap| {
+                    if (snap.snapshot_kind != .registers) continue;
+                    last = snap.payload;
+                    continue;
+                }
+                last = e.payload;
             }
             if (last) |p| {
                 break :blk try alloc.dupe(u8, p);

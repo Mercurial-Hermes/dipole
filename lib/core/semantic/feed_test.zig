@@ -219,6 +219,64 @@ test "breakpoint.list@1: payload is opaque, not parsed" {
     try std.testing.expectEqualStrings(payload, frame.payload);
 }
 
+test "register.snapshot@1: empty log yields empty list payload" {
+    const alloc = std.testing.allocator;
+    const events = [_]ev.Event{};
+
+    const id = reg.ProjectionId{ .name = "register.snapshot", .version = .{ .major = 1, .minor = 0 } };
+    var frame = try feed.buildFrame(alloc, id, &events);
+    defer feed.deinitFrame(alloc, &frame);
+
+    try std.testing.expectEqualStrings("register.snapshot", frame.projection_id);
+    try std.testing.expectEqualStrings("[]", frame.payload);
+}
+
+test "register.snapshot@1: latest register snapshot payload wins" {
+    const alloc = std.testing.allocator;
+    const snap_old = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 0,
+        .payload = "old",
+    };
+    const snap_new = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 1,
+        .payload = "new",
+    };
+    const events = [_]ev.Event{
+        .{ .category = .snapshot, .event_id = 0, .timestamp = null, .snapshot = snap_old },
+        .{ .category = .snapshot, .event_id = 1, .timestamp = null, .snapshot = snap_new },
+    };
+
+    const id = reg.ProjectionId{ .name = "register.snapshot", .version = .{ .major = 1, .minor = 0 } };
+    var frame = try feed.buildFrame(alloc, id, &events);
+    defer feed.deinitFrame(alloc, &frame);
+
+    try std.testing.expectEqualStrings("new", frame.payload);
+}
+
+test "register.snapshot@1: ignores snapshot events without register payload" {
+    const alloc = std.testing.allocator;
+    const snap = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 2,
+        .payload = "regs",
+    };
+    const events = [_]ev.Event{
+        .{ .category = .snapshot, .event_id = 0, .timestamp = null, .payload = "not-a-snapshot" },
+        .{ .category = .snapshot, .event_id = 1, .timestamp = null, .snapshot = snap },
+    };
+
+    const id = reg.ProjectionId{ .name = "register.snapshot", .version = .{ .major = 1, .minor = 0 } };
+    var frame = try feed.buildFrame(alloc, id, &events);
+    defer feed.deinitFrame(alloc, &frame);
+
+    try std.testing.expectEqualStrings("regs", frame.payload);
+}
+
 test "register.snapshot@1: single snapshot echoes payload verbatim" {
     const alloc = std.testing.allocator;
     const payload =

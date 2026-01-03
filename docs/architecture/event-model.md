@@ -102,6 +102,9 @@ Backend events are **opaque** at capture time.
 
 Interpretation happens later.
 
+Raw backend output is preserved in the event log and logs only.
+It is never rendered directly to the user.
+
 ---
 
 ## 4. Execution Events

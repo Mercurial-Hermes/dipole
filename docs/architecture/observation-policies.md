@@ -73,6 +73,7 @@ The UI:
 - does not contain policy logic
 - does not infer when commands should run
 - does not inspect Events to make decisions
+ - uses the Dipole REPL as the sole command interface
 
 Policies are **headless**.
 
@@ -87,6 +88,7 @@ In particular:
 - tmux panes do not poll the debugger
 - tmux panes do not auto-issue commands
 - tmux panes do not contain timing or condition logic
+- tmux panes never display raw LLDB output
 
 Any “automatic refresh” behaviour must live in an Observation Policy,
 never in tmux scripts or pane glue code.

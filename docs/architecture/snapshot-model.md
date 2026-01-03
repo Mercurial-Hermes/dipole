@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The **Snapshot Model** defines how Dipole captures and represents program state at meaningful moments during a Debug Session.
+The **Snapshot Model** defines how Dipole captures and represents program state at defined moments during a Debug Session.
 
 Snapshots preserve *observed truth* at a point in time.  
 They enable comparison, replay, and pedagogy — without attempting to rewind or resume execution.
@@ -27,7 +27,7 @@ Snapshots are **events**, not mutable state.
 
 ## Design Principle
 
-> **Snapshots capture state only when it is meaningful.  
+> **Snapshots capture state only at defined moments.  
 > Continuous capture is explicitly rejected.**
 
 This preserves clarity, performance, and pedagogical value.
@@ -36,7 +36,7 @@ This preserves clarity, performance, and pedagogical value.
 
 ## When Snapshots Occur
 
-Snapshots are captured at **semantic moments**, such as:
+Snapshots are captured at defined moments, such as:
 
 - breakpoint hit
 - step completion
@@ -72,15 +72,14 @@ Scope is always explicit.
 
 ## Snapshot Intent
 
-Every snapshot has a **reason**.
+Every snapshot has a **reason** that identifies its capture boundary.
 
 Examples:
 - breakpoint hit
 - step complete
-- lesson boundary
-- pedagogical annotation point
+- user-requested capture
 
-This intent is preserved to support explanation and replay.
+This intent is preserved as capture metadata and supports replay.
 
 ---
 
@@ -146,9 +145,10 @@ Snapshots are represented as **Snapshot Events** in the event log.
 They:
 - have a position in event order
 - reference captured data
-- carry intent metadata
+- carry capture metadata
 
-Snapshots never exist outside the event stream.
+Snapshot payloads are raw observational artifacts.  
+Parsing and interpretation are strictly downstream in projections.
 
 ---
 
@@ -177,7 +177,7 @@ Because snapshots are intentional and immutable:
 - explanations can evolve independently
 - complex behaviour can be taught deterministically
 
-Snapshots are the **anchor points of understanding**.
+Snapshots are stable anchors for downstream explanation.
 
 ---
 
@@ -186,7 +186,7 @@ Snapshots are the **anchor points of understanding**.
 1. Snapshots must never be implicit  
 2. Snapshots must never mutate state  
 3. Snapshots must never attempt reversibility  
-4. Snapshots must always be attributable to an intent  
+4. Snapshots must always be attributable to a capture boundary  
 
 Violating these rules undermines the entire model.
 

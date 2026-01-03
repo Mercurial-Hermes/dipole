@@ -42,7 +42,7 @@ Derived state includes (but is not limited to):
 - current thread selection
 - current frame selection
 - current replay position
-- visible register set
+- visible register set (raw snapshot payload or parsed view)
 - visible call stack
 - visible locals
 - active memory view

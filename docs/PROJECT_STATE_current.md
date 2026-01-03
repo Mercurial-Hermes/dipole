@@ -48,7 +48,46 @@ This is a genuine step forward: Dipole now *observes* debugging rather than *per
 
 ---
 
-### 2. Clear Boundary Between CLI, Controller, and DebugSession
+### 2. v0.2.3 Gate 1 — Long-Lived Session + REPL Ownership (Complete)
+
+- one long-lived LLDB process per session
+- Dipole-owned REPL as the sole source of user intent
+- LLDB output logged only, never rendered directly
+
+---
+
+### 3. v0.2.3 Gate 2 — Pane Role Migration (Complete)
+
+Non-REPL panes are now pure view processes:
+- no command pipe access
+- no backend output draining
+- no transport ownership
+
+Backend output logging is centralized and pane-independent.
+
+---
+
+### 4. v0.2.3 Gate 3 — Snapshot Events (Complete)
+
+Register snapshots are now captured as Snapshot Events:
+- emitted only after execution commands (step-in, step-over, continue)
+- raw backend bytes stored without parsing
+- anchored to prior event sequence boundaries
+
+Snapshot admission is append-only and kernel-owned.
+
+---
+
+### 5. v0.2.3 Gate 4 — Projection Layer (Complete)
+
+- projections compute deterministic views from immutable events
+- register snapshot projection selects the latest snapshot event
+- right pane consumes projection output only
+- kernel access remains single-threaded
+
+---
+
+### 6. Clear Boundary Between CLI, Controller, and DebugSession
 
 Boundaries are now explicit and enforced:
 
@@ -78,7 +117,7 @@ These roles now match the architecture documents exactly.
 
 ---
 
-### 3. Event-Sourced Core Is Exercised by Tests
+### 7. Event-Sourced Core Is Exercised by Tests
 
 The test suite now validates key invariants:
 
@@ -103,10 +142,13 @@ This is not cosmetic coverage — it exercises the architectural heart.
 - No PTY access
 
 ### `cmd/dipole/cli/attach_session.zig`
-- Owns attach lifecycle
-- Owns stdin/stdout bridging
-- Sets up command and output pipes
-- Starts Controller broker loop
+- CLI entrypoint only
+- Argument parsing and dispatch
+
+### `cmd/dipole/cli/attach_session_impl.zig`
+- Attach lifecycle orchestration
+- Controller loop + projection loop
+- Pipe setup for REPL and view panes
 - Does not interpret backend output
 
 ### `lib/core/controller.zig`
@@ -128,13 +170,11 @@ This is not cosmetic coverage — it exercises the architectural heart.
 
 This is intentional.
 
-- No tmux integration
-- No multi-pane UI
 - No semantic interpretation of LLDB output
 - No register parsing
 - No prompt detection
-- No snapshot derivation logic
-- No concurrency beyond basic polling
+- No stop detection or inferred execution state
+- No multi-threaded kernel access
 
 These are **next-layer concerns**, not missing features.
 
@@ -142,32 +182,17 @@ These are **next-layer concerns**, not missing features.
 
 ## Identified Next Architectural Pressure Point
 
-### Multi-Source Command Ingress (tmux panes)
+### Observation Policies Beyond Mechanical Snapshots
 
-The next real requirement is **multiple UI sources** (e.g. REPL pane + registers pane) issuing commands concurrently.
-
-Current limitation:
-- Command pipe carries raw bytes only
-- Multiple sources would be indistinguishable
-- Routing would become ambiguous
-
-This is a *transport-level* issue, not a semantic one.
+Observation scheduling beyond post-command snapshots remains intentionally minimal.
 
 ---
 
 ## Approved Direction (Pending Implementation)
 
-A **minimal request envelope** on the command pipe is approved in principle:
-
-- Adds opaque `source_id`
-- Adds payload length framing
-- Preserves intent boundary
-- Introduces no semantics
-- Enables future tmux panes without architectural drift
-
-This step is deliberately small and precedes any tmux work.
-
-A new document (`docs/architecture/request-routing.md`) is expected to formalize this.
+The request envelope on the command pipe is now formalized in
+`docs/architecture/request-routing.md`.
+It remains a transport-only boundary and does not change intent semantics.
 
 ---
 
@@ -185,7 +210,10 @@ All of these have been explicitly identified and are being guarded against.
 
 ## Overall Assessment
 
-Dipole is now **architecturally coherent again**.
+Dipole is now **architecturally coherent** for v0.2.3.
+The release adds a long-lived session, a Dipole-owned REPL, snapshot events,
+and a projection-driven view pane, with raw LLDB output preserved in logs only
+and never rendered directly to the user.
 
 We have:
 - regained control over boundaries

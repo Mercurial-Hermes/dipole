@@ -1,16 +1,14 @@
-# tmux UI Wiring (Phase 0)
+# tmux UI Wiring (v0.2.3)
 
 ## Purpose
 
-Describe the **minimal and strictly non-semantic** tmux wiring used to host
-multiple UI panes **without changing** Controller, Driver, or DebugSession
-semantics.
+Describe the tmux wiring used to host a Dipole-owned REPL and view panes
+**without changing** Controller, Driver, or DebugSession semantics.
 
 This document defines **wiring only**:
-- no interpretation
-- no parsing
-- no semantics
-- no policy
+- no interpretation in the Controller
+- no parsing of LLDB output in UI panes
+- no policy in tmux glue
 
 If behaviour appears to change, the architecture has been violated.
 
@@ -23,8 +21,10 @@ The following constraints are **architectural invariants**:
 - Controller is the **sole owner** of the LLDB PTY.
 - Panes **never** talk to LLDB directly.
 - All commands flow **only** through the request envelope.
-- All output flows **only** from the Controller through pipes.
-- CLI remains the **intent boundary**.
+- Raw LLDB output is **never** shown directly to the user.
+- Raw LLDB output is preserved in logs only.
+- The Dipole REPL is the **sole user command interface**.
+- CLI bootstraps the session and wires components; it does not execute commands.
 
 These constraints are not guidelines.  
 They are required for correctness.
@@ -36,20 +36,23 @@ They are required for correctness.
 Two pane processes are spawned under tmux:
 
 - **Left pane**: interactive REPL
-- **Right pane**: raw output view
+- **Right pane**: read-only semantic view (e.g. registers)
 
-Each pane:
+The REPL pane:
 
 - reads stdin
-- writes request envelopes to a **shared command pipe**
-- reads from its **own output pipe**
-- writes raw bytes to stdout
+- writes request envelopes to the command pipe
+
+View panes:
+
+- do not read stdin for commands
+- render derived/semantic views only
 
 The Controller:
 
 - reads envelopes from the command pipe
 - forwards payloads to the Driver **unchanged**
-- fans out LLDB output **identically** to all output pipes
+- admits raw LLDB output as Events
 
 No routing, filtering, or interpretation occurs at this layer.
 
@@ -58,7 +61,7 @@ No routing, filtering, or interpretation occurs at this layer.
 ## Module Layout (Phase 0)
 
 - `cmd/dipole/ui/pane_runtime.zig`
-  - pane loop only (stdin → envelope, output pipe → stdout)
+  - pane loop only (REPL intent input, view rendering)
   - no Controller, no tmux knowledge
 - `cmd/dipole/ui/tmux_session.zig`
   - tmux session orchestration and pane spawning
@@ -79,8 +82,8 @@ tmux is used **only** for process orchestration.
 
 Panes are independent CLI processes that:
 
-- express intent (stdin → command envelope)
-- render raw output (output pipe → stdout)
+- express intent only in the REPL pane
+- render derived/semantic views only
 
 tmux lives **above the intent boundary** and does not introduce:
 
@@ -121,6 +124,7 @@ tmux panes and wiring MUST NEVER:
 - emit Events or mutate DebugSession state
 - implement policy, automation, or heuristics
 - use pane roles to suppress, filter, or redirect output
+- render raw LLDB output
 
 If any of these appear, the architecture has already failed.
 
@@ -128,7 +132,7 @@ If any of these appear, the architecture has already failed.
 
 ## Future Panes (e.g. Registers, Memory)
 
-Phase 0 panes are **transport-only**.
+View panes are **projection-driven**.
 
 Any future semantic panes MUST:
 

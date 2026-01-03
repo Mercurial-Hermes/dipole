@@ -32,7 +32,7 @@ Binary framing on the command pipe:
 
 ## Responsibilities
 
-- CLI writes the envelope to the command pipe.
+- CLI (session bootstrap) and the Dipole REPL write envelopes to the command pipe.
 - Controller reads the envelope, forwards `payload` unchanged to the Driver.
 - Driver interface is unchanged.
 - DebugSession admission is unchanged; observations remain raw.
@@ -41,7 +41,7 @@ Binary framing on the command pipe:
 
 ## Intent Boundary
 
-Intent formation remains in the CLI.
+Intent formation remains in the CLI / REPL.
 
 The envelope exists **below** the intent boundary and must not be treated as
 an intent representation.

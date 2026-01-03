@@ -28,7 +28,7 @@ No layer violates this direction.
 
 User
 ↓
-CLI / REPL / UI
+CLI (session start) / Dipole REPL (commands)
 ↓
 Controller
 ↓
@@ -49,15 +49,15 @@ Each arrow represents a **single responsibility handoff**.
 
 ---
 
-## CLI Responsibility (Intent Boundary)
+## CLI & REPL Responsibility (Intent Boundary)
 
-The CLI / REPL is responsible for:
+The CLI and REPL are responsible for:
 
 - reading user input (argv, stdin)
 - validating syntax
 - expressing **intent**
 
-The CLI:
+The CLI / REPL:
 - does not talk to the debugger
 - does not own execution
 - does not admit events
@@ -65,11 +65,21 @@ The CLI:
 
 Its job ends once intent is handed to the Controller.
 
+### Session Lifecycle (Live)
+
+A live session follows a simple lifecycle:
+
+start → interact → quit
+
+- **start**: a single, long-lived LLDB process is launched/attached
+- **interact**: the REPL is the sole command interface
+- **quit**: the LLDB process is terminated and no further events occur
+
 ---
 
 ## Step-by-Step: Live Debugging Interaction
 
-### Example: User types `step`
+### Example: User types `step` in the REPL
 
 ---
 
@@ -235,14 +245,17 @@ Semantics may be partial or provisional.
 ## 10. Rendering
 
 UI components:
-- read derived state
-- read semantic annotations
+- read derived state / projections
+- read semantic annotations when present
 - render views
 
 Rendering:
 - does not emit events
 - does not affect truth
 - may refresh freely
+
+Raw LLDB output is **never rendered directly** to the user.
+It is preserved in the event log and logs only.
 
 ---
 

@@ -1,8 +1,8 @@
 const std = @import("std");
 const ev = @import("event");
-const ctl = @import("controller.zig");
+const ctl = @import("controller");
 const drv = @import("driver");
-const dbs = @import("debug_session.zig");
+const dbs = @import("debug_session");
 const lnchr = @import("debugger/lldb_launcher.zig");
 const ptydrv = @import("debugger/pty_raw_driver.zig");
 
@@ -55,6 +55,16 @@ fn fakePoll(ctx: *anyopaque) ?drv.DriverObservation {
         },
         .prompt => .prompt,
     };
+}
+
+fn writeEnvelopeRaw(fd: std.posix.fd_t, source_id: u32, payload: []const u8) !void {
+    var header: [8]u8 = undefined;
+    std.mem.writeInt(u32, header[0..4], source_id, .little);
+    std.mem.writeInt(u32, header[4..8], @as(u32, @intCast(payload.len)), .little);
+    _ = try std.posix.write(fd, &header);
+    if (payload.len > 0) {
+        _ = try std.posix.write(fd, payload);
+    }
 }
 
 test "controller ingests raw driver observations as ordered events" {
@@ -168,4 +178,129 @@ test "controller ingests real transport observations without interpretation" {
     while (i < events.len) : (i += 1) {
         try std.testing.expect(events[i - 1].event_id < events[i].event_id);
     }
+}
+
+test "controller ignores tx observations for event admission" {
+    const alloc = std.testing.allocator;
+
+    var session = dbs.DebugSession.init(alloc);
+    defer session.deinit();
+
+    const observations = [_]drv.DriverObservation{
+        .{ .tx = "ignored" },
+    };
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+
+    var controller = ctl.Controller.init(
+        alloc,
+        &session,
+        driver,
+    );
+
+    try controller.issueRawCommand("noop");
+
+    const events = session.eventsView();
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(ev.Category.command, events[0].category);
+}
+
+test "controller emits snapshot only after exec commands" {
+    const alloc = std.testing.allocator;
+
+    var session = dbs.DebugSession.init(alloc);
+    defer session.deinit();
+
+    const observations = [_]drv.DriverObservation{};
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+
+    var controller = ctl.Controller.init(
+        alloc,
+        &session,
+        driver,
+    );
+
+    var cmd_fds = try std.posix.pipe();
+    defer {
+        if (cmd_fds[0] >= 0) _ = std.posix.close(cmd_fds[0]);
+        if (cmd_fds[1] >= 0) _ = std.posix.close(cmd_fds[1]);
+    }
+    const pty_fds = try std.posix.pipe();
+    defer {
+        if (pty_fds[0] >= 0) _ = std.posix.close(pty_fds[0]);
+        if (pty_fds[1] >= 0) _ = std.posix.close(pty_fds[1]);
+    }
+
+    try writeEnvelopeRaw(cmd_fds[1], 1, "thread step-in\n");
+    _ = std.posix.close(cmd_fds[1]);
+    cmd_fds[1] = -1;
+
+    _ = try controller.drainOnce(cmd_fds[0], &.{}, pty_fds[0]);
+
+    const events = session.eventsView();
+    try std.testing.expectEqual(@as(usize, 3), events.len);
+    try std.testing.expectEqual(ev.Category.command, events[0].category);
+    try std.testing.expectEqual(ev.Category.command, events[1].category);
+    try std.testing.expectEqual(ev.Category.snapshot, events[2].category);
+
+    const snap = events[2].snapshot orelse return error.ExpectedSnapshot;
+    try std.testing.expectEqual(@as(u64, 1), snap.captured_at_event_seq);
+    try std.testing.expectEqual(@as(usize, 0), snap.payload.len);
+}
+
+test "controller does not emit snapshot for non-exec commands" {
+    const alloc = std.testing.allocator;
+
+    var session = dbs.DebugSession.init(alloc);
+    defer session.deinit();
+
+    const observations = [_]drv.DriverObservation{};
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+
+    var controller = ctl.Controller.init(
+        alloc,
+        &session,
+        driver,
+    );
+
+    var cmd_fds = try std.posix.pipe();
+    defer {
+        if (cmd_fds[0] >= 0) _ = std.posix.close(cmd_fds[0]);
+        if (cmd_fds[1] >= 0) _ = std.posix.close(cmd_fds[1]);
+    }
+    const pty_fds = try std.posix.pipe();
+    defer {
+        if (pty_fds[0] >= 0) _ = std.posix.close(pty_fds[0]);
+        if (pty_fds[1] >= 0) _ = std.posix.close(pty_fds[1]);
+    }
+
+    try writeEnvelopeRaw(cmd_fds[1], 1, "help\n");
+    _ = std.posix.close(cmd_fds[1]);
+    cmd_fds[1] = -1;
+
+    _ = try controller.drainOnce(cmd_fds[0], &.{}, pty_fds[0]);
+
+    const events = session.eventsView();
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(ev.Category.command, events[0].category);
 }

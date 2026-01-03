@@ -15,6 +15,49 @@ pub const CategoryCount = struct {
     count: usize,
 };
 
+pub const RegisterSnapshotStatus = enum {
+    empty,
+    present,
+};
+
+pub const RegisterSnapshotView = struct {
+    status: RegisterSnapshotStatus,
+    snapshot_event_id: ?u64,
+    captured_at_event_seq: ?u64,
+    payload_bytes: []const u8,
+};
+
+pub fn latestRegisterSnapshot(events: []const Event) RegisterSnapshotView {
+    var last_event_id: ?u64 = null;
+    var last_capture_seq: ?u64 = null;
+    var last_payload: []const u8 = &.{};
+
+    for (events) |e| {
+        if (e.category != .snapshot) continue;
+        const snap = e.snapshot orelse continue;
+        if (snap.snapshot_kind != .registers) continue;
+        last_event_id = e.event_id;
+        last_capture_seq = snap.captured_at_event_seq;
+        last_payload = snap.payload;
+    }
+
+    if (last_event_id == null) {
+        return .{
+            .status = .empty,
+            .snapshot_event_id = null,
+            .captured_at_event_seq = null,
+            .payload_bytes = &.{},
+        };
+    }
+
+    return .{
+        .status = .present,
+        .snapshot_event_id = last_event_id,
+        .captured_at_event_seq = last_capture_seq,
+        .payload_bytes = last_payload,
+    };
+}
+
 pub fn projectEventKinds(
     alloc: std.mem.Allocator,
     events: []const Event,
