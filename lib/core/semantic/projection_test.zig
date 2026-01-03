@@ -86,6 +86,7 @@ test "TS2-001: projectEventKinds derives stable semantic classification" {
             .command => .UserAction,
             .backend, .execution => .EngineActivity,
             .snapshot => .Snapshot,
+            .context, .provenance => .Unknown,
         };
     }
 
@@ -222,5 +223,37 @@ test "projection.latestRegisterSnapshot ignores snapshot events without payload"
     const view = proj.latestRegisterSnapshot(&events);
     try std.testing.expectEqual(proj.RegisterSnapshotStatus.present, view.status);
     try std.testing.expectEqual(@as(?u64, 2), view.snapshot_event_id);
+    try std.testing.expectEqualStrings("regs", view.payload_bytes);
+}
+
+test "projection.projectEventKinds maps context and provenance to Unknown" {
+    const events = [_]ev.Event{
+        .{ .category = .context, .event_id = 0, .timestamp = null },
+        .{ .category = .provenance, .event_id = 1, .timestamp = null },
+    };
+
+    const kinds = try proj.projectEventKinds(std.testing.allocator, &events);
+    defer std.testing.allocator.free(kinds);
+
+    try std.testing.expectEqual(@as(usize, 2), kinds.len);
+    try std.testing.expectEqual(proj.EventKind.Unknown, kinds[0]);
+    try std.testing.expectEqual(proj.EventKind.Unknown, kinds[1]);
+}
+
+test "projection.latestRegisterSnapshot ignores context and provenance events" {
+    const snap = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 1,
+        .payload = "regs",
+    };
+    const events = [_]ev.Event{
+        .{ .category = .context, .event_id = 0, .timestamp = null },
+        .{ .category = .snapshot, .event_id = 1, .timestamp = null, .snapshot = snap },
+        .{ .category = .provenance, .event_id = 2, .timestamp = null },
+    };
+
+    const view = proj.latestRegisterSnapshot(&events);
+    try std.testing.expectEqual(proj.RegisterSnapshotStatus.present, view.status);
     try std.testing.expectEqualStrings("regs", view.payload_bytes);
 }

@@ -134,6 +134,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "pane_runtime", .module = pane_runtime_mod },
             .{ .name = "tmux_session", .module = tmux_session_mod },
             .{ .name = "projection", .module = projection_mod },
+            .{ .name = "event", .module = event_mod },
         },
     });
     const attach_session_mod = b.addModule("attach_session", .{

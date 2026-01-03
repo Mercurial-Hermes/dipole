@@ -71,6 +71,7 @@ pub fn projectEventKinds(
             .command => .UserAction,
             .backend, .execution => .EngineActivity,
             .snapshot => .Snapshot,
+            .context, .provenance => .Unknown,
         };
     }
     return event_kinds; // caller frees
