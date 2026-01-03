@@ -8,6 +8,8 @@ pub const Category = enum {
     backend,
     execution,
     snapshot,
+    context,
+    provenance,
 };
 
 pub const SnapshotKind = enum {

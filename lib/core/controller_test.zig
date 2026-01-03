@@ -211,6 +211,45 @@ test "controller ignores tx observations for event admission" {
     try std.testing.expectEqual(ev.Category.command, events[0].category);
 }
 
+test "controller behavior is unaffected by existing context/provenance events" {
+    const alloc = std.testing.allocator;
+
+    var session = dbs.DebugSession.init(alloc);
+    defer session.deinit();
+
+    const ctx_payload = try alloc.dupe(u8, "ctx");
+    try session.appendWithPayload(.context, ctx_payload);
+    const prov_payload = try alloc.dupe(u8, "prov");
+    try session.appendWithPayload(.provenance, prov_payload);
+
+    const observations = [_]drv.DriverObservation{
+        .{ .rx = "out" },
+    };
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+
+    var controller = ctl.Controller.init(
+        alloc,
+        &session,
+        driver,
+    );
+
+    try controller.issueRawCommand("noop");
+
+    const events = session.eventsView();
+    try std.testing.expectEqual(@as(usize, 4), events.len);
+    try std.testing.expectEqual(ev.Category.context, events[0].category);
+    try std.testing.expectEqual(ev.Category.provenance, events[1].category);
+    try std.testing.expectEqual(ev.Category.command, events[2].category);
+    try std.testing.expectEqual(ev.Category.backend, events[3].category);
+}
+
 test "controller emits snapshot only after exec commands" {
     const alloc = std.testing.allocator;
 

@@ -10,6 +10,13 @@ const fd_utils = @import("fd_utils");
 const pane_runtime = @import("pane_runtime");
 const tmux_session = @import("tmux_session");
 const projection = @import("projection");
+const event = @import("event");
+
+pub const FactCategory = enum { context, provenance };
+pub const SessionFact = struct {
+    category: FactCategory,
+    payload: []const u8,
+};
 
 const Session = struct {
     launcher: lldb_launcher.LLDBLauncher,
@@ -19,6 +26,22 @@ const Session = struct {
 
 const default_source_id: u32 = 1;
 const synthetic_source_id: u32 = 2;
+
+pub fn appendSessionFacts(
+    allocator: std.mem.Allocator,
+    session: *debug_session.DebugSession,
+    facts: []const SessionFact,
+) !void {
+    for (facts) |fact| {
+        const payload = try allocator.dupe(u8, fact.payload);
+        errdefer allocator.free(payload);
+        const category: event.Category = switch (fact.category) {
+            .context => .context,
+            .provenance => .provenance,
+        };
+        try session.appendWithPayload(category, payload);
+    }
+}
 
 fn drainLogOnce(out_fd: std.posix.fd_t, sink: std.fs.File) !void {
     var buf: [1024]u8 = undefined;
@@ -229,11 +252,13 @@ pub fn runAttach(
     allocator: std.mem.Allocator,
     pid: i32,
     commands: []const []const u8,
+    facts: []const SessionFact,
     use_tmux: bool,
     interactive: bool,
 ) !void {
     const launcher = try lldb_launcher.LLDBLauncher.attach(pid);
     var dbg_session = debug_session.DebugSession.init(allocator);
+    try appendSessionFacts(allocator, &dbg_session, facts);
     defer dbg_session.deinit();
     var session = Session{
         .launcher = launcher,

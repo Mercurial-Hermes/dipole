@@ -1,3 +1,5 @@
+// lib/core/debug_session_test.zig
+
 const std = @import("std");
 const ds = @import("debug_session.zig");
 const ev = @import("event");
@@ -119,4 +121,25 @@ test "debug_session.snapshot_anchor_is_preserved_on_replay" {
     const snap = replayed[1].snapshot orelse return error.ExpectedSnapshot;
     try std.testing.expectEqual(@as(u64, 0), snap.captured_at_event_seq);
     try std.testing.expectEqualStrings("raw", snap.payload);
+}
+
+test "debug_session.replay_preserves_context_and_provenance_events" {
+    var session = ds.DebugSession.init(std.testing.allocator);
+    defer session.deinit();
+
+    const ctx_payload = try std.testing.allocator.dupe(u8, "ctx");
+    try session.appendWithPayload(.context, ctx_payload);
+    const prov_payload = try std.testing.allocator.dupe(u8, "prov");
+    try session.appendWithPayload(.provenance, prov_payload);
+
+    const original = session.eventsView();
+    var replay = try ds.DebugSession.initFromEvents(std.testing.allocator, original);
+    defer replay.deinit();
+
+    const replayed = replay.eventsView();
+    try std.testing.expectEqual(@as(usize, 2), replayed.len);
+    try std.testing.expectEqual(ev.Category.context, replayed[0].category);
+    try std.testing.expectEqualStrings("ctx", replayed[0].payload);
+    try std.testing.expectEqual(ev.Category.provenance, replayed[1].category);
+    try std.testing.expectEqualStrings("prov", replayed[1].payload);
 }

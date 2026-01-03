@@ -7,19 +7,19 @@ This glossary defines the canonical meanings of terms used in Dipole’s code, d
 ---
 
 ### Event [v0.2]
-An immutable record admitted into Dipole’s event log. Represents observed truth, not interpretation or intent. Core fields: `category` (e.g. snapshot, command, session), `event_id` (monotonic), `timestamp` (optional; not semantically authoritative), `payload` (opaque bytes, may be empty). Events are append-only, replayable, and the sole source of truth (TS1).
+An immutable record admitted into Dipole’s event log. Represents a raw observation or explicit user intent, not interpretation. Core fields: `category` (e.g. snapshot, command, session), `event_id` (monotonic), `timestamp` (optional; not authoritative), `payload` (opaque bytes, may be empty). Events are append-only and replayable (TS1).
 
 ### Event Log [v0.2]
-An ordered, append-only sequence of Events. Immutable once written, replayable, and the only authoritative history. All semantic meaning in Dipole is derived from the event log.
+An ordered, append-only sequence of Events. Immutable once written and replayable. Projections derive outputs from the event log; interpretation, if any, is downstream.
 
 ### Projection [v0.2]
-Pure, deterministic function from an event log to derived meaning. Properties: read-only over events; deterministic and replayable; versioned; explicitly registered. Examples: `event.kind@1`, `breakpoint.list@1`, `register.snapshot@1`. Projections never mutate state, perform I/O, or depend on external context. (See TS2.)
+Pure, deterministic function from an event log to derived outputs. Properties: read-only over events; deterministic and replayable; versioned; explicitly registered. Examples: `event.kind@1`, `breakpoint.list@1`, `register.snapshot@1`. Projections never mutate state, perform I/O, or depend on external context. (See TS2.)
 
 ### ProjectionId [v0.2]
-The stable identity of a projection. Form: `<name>@<major>.<minor>`. Examples: `event.kind@1.0`, `register.snapshot@1.0`. ProjectionId + version define semantic meaning, not implementation.
+The stable identity of a projection. Form: `<name>@<major>.<minor>`. Examples: `event.kind@1.0`, `register.snapshot@1.0`. ProjectionId + version define the output contract, not the implementation.
 
 ### Semantic Registry [v0.2]
-The authoritative catalog of all projections. Each entry declares: name, version, permitted event fields, output kind. The registry enforces version correctness, semantic drift guards, and explicit evolution.
+The authoritative catalog of all projections. Each entry declares: name, version, permitted event fields, output kind. The registry enforces version correctness, drift guards, and explicit evolution.
 
 ### Frame [v0.2]
 The output of a projection. Contains: `projection_id`, `version`, `payload` (opaque bytes). Frames are downstream-only, read-only, and replay-equivalent to direct projection execution. Frames are the only thing consumers may see (TS3).
@@ -34,22 +34,34 @@ Any component that reads Frames. Examples: CLI commands (semantic list/show/eval
 Boundary object that accepts Frames, enforces ProjectionId/version matching, and renders payload bytes for presentation. UiAdapters do not execute projections, do not parse or reinterpret semantics, and exist purely for presentation.
 
 ### Intent [v0.2]
-A request to perform an external action. In v0.2: only `intent.ping` exists; intent is non-authoritative and produces Events, not effects directly. Intent exists to prove the control path, not to drive behavior (TS4).
+A request to perform an external action. In v0.2.4: REPL commands are the primary intent surface. Intent is non-authoritative and produces Events, not effects directly (TS4).
 
 ### Deterministic Replay [v0.2]
-Replaying the same event log yields identical Frames. This is the cornerstone of Dipole’s trust model and pedagogy.
+Replaying the same event log yields identical projection outputs. This is the cornerstone of Dipole’s trust model and pedagogy.
+
+### Replay Invariant [v0.2.4]
+Identical event logs yield identical projection outputs. Replay does not depend on ambient environment, host defaults, or time.
+
+### Observation [v0.2.4]
+A raw, uninterpreted fact emitted by an external system and admitted as an Event. Observation is not explanation.
+
+### Context [v0.2.5]
+An immutable fact recorded to make observations interpretable during replay. Context is not an observation and not an interpretation.
+
+### Provenance [v0.2.5]
+Identity of an observation’s producer. Conveys origin only; does not imply correctness, priority, or authority.
 
 ### Snapshot Event [v0.2]
-An Event whose category is `snapshot`. Carries opaque payloads and represents captured external state. Consumed by projections like `breakpoint.list@1` and `register.snapshot@1`. No semantic meaning is inferred unless a projection explicitly defines it.
+An Event whose category is `snapshot`. Carries opaque payloads and represents captured external state. Snapshot kinds are first-class axes. Consumed by projections like `breakpoint.list@1` and `register.snapshot@1`. No interpretation is implied in the event log.
 
 ### register.snapshot@1 [v0.2]
-Projection that selects the most recent snapshot event, emits its payload verbatim, and emits `"[]"` if no snapshot exists. No parsing, normalization, or inference occurs in v0.2.
+Projection that selects the most recent snapshot event of kind `registers`, emits its payload verbatim, and emits `"[]"` if no snapshot exists. No parsing, normalization, or inference occurs in v0.2.
 
 ### breakpoint.list@1 [v0.2]
 Projection that selects the most recent snapshot payload, treats payload as opaque, and emits `"[]"` if no snapshot exists.
 
 ### TS1–TS4 [v0.2]
-Thin-slice milestones that define Dipole’s sealed semantic core: TS1 — Event-sourced truth; TS2 — Pure, versioned projections; TS3 — Downstream-only semantic feed; TS4 — Minimal intent plane. All four are complete and sealed in v0.2.
+Thin-slice milestones that define Dipole’s sealed core: TS1 — Event-sourced truth; TS2 — Pure, versioned projections; TS3 — Downstream-only feed; TS4 — Minimal intent plane. All four are complete and sealed in v0.2.
 
 ### LLDBDriver [historical / future]
 A Zig wrapper around LLDB used in pre-v0.2 experiments. In v0.2: LLDBDriver is not part of the active architecture; LLDB is treated abstractly as an external event source. Remains relevant for historical experiments and future event ingress work.
