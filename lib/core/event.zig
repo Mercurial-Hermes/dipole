@@ -1,3 +1,5 @@
+//lib/core/event.zig
+
 const std = @import("std");
 
 pub const Category = enum {
@@ -6,6 +8,18 @@ pub const Category = enum {
     backend,
     execution,
     snapshot,
+};
+
+pub const SnapshotKind = enum {
+    registers,
+};
+
+pub const SnapshotPayload = struct {
+    snapshot_kind: SnapshotKind,
+    source_id: u32,
+    captured_at_event_seq: u64,
+    payload: []const u8,
+    payload_owned: bool = false,
 };
 
 /// Event
@@ -22,4 +36,6 @@ pub const Event = struct {
     payload: []const u8 = &.{},
     /// Whether DebugSession owns payload memory.
     payload_owned: bool = false,
+    /// Optional snapshot payload for snapshot events only.
+    snapshot: ?SnapshotPayload = null,
 };

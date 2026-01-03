@@ -133,6 +133,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "fd_utils", .module = fd_utils_mod },
             .{ .name = "pane_runtime", .module = pane_runtime_mod },
             .{ .name = "tmux_session", .module = tmux_session_mod },
+            .{ .name = "projection", .module = projection_mod },
         },
     });
     const attach_session_mod = b.addModule("attach_session", .{
@@ -288,6 +289,9 @@ fn addTestsUnder(
     const driver_mod = b.addModule("driver", .{
         .root_source_file = b.path("lib/core/driver.zig"),
     });
+    const request_envelope_mod = b.addModule("request_envelope", .{
+        .root_source_file = b.path("lib/core/transport/request_envelope.zig"),
+    });
     const debug_session_mod = b.addModule("debug_session", .{
         .root_source_file = b.path("lib/core/debug_session.zig"),
         .imports = &.{
@@ -324,6 +328,7 @@ fn addTestsUnder(
             .{ .name = "event", .module = event_mod },
             .{ .name = "debug_session.zig", .module = debug_session_mod },
             .{ .name = "driver", .module = driver_mod },
+            .{ .name = "request_envelope", .module = request_envelope_mod },
         },
     });
 

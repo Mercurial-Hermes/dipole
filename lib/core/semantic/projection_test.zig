@@ -167,3 +167,60 @@ test "TS2-001: projectEventKinds ignores non-permitted fields (input field isola
         try std.testing.expectEqual(ka, kb);
     }
 }
+
+test "projection.latestRegisterSnapshot returns empty when no snapshots exist" {
+    const events = [_]ev.Event{
+        .{ .category = .session, .event_id = 0, .timestamp = null },
+        .{ .category = .command, .event_id = 1, .timestamp = null },
+    };
+
+    const view = proj.latestRegisterSnapshot(&events);
+    try std.testing.expectEqual(proj.RegisterSnapshotStatus.empty, view.status);
+    try std.testing.expect(view.snapshot_event_id == null);
+    try std.testing.expect(view.captured_at_event_seq == null);
+    try std.testing.expectEqual(@as(usize, 0), view.payload_bytes.len);
+}
+
+test "projection.latestRegisterSnapshot selects latest register snapshot by order" {
+    const snap_old = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 5,
+        .payload = "old",
+    };
+    const snap_new = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 9,
+        .payload = "new",
+    };
+
+    const events = [_]ev.Event{
+        .{ .category = .snapshot, .event_id = 2, .timestamp = null, .snapshot = snap_old },
+        .{ .category = .snapshot, .event_id = 3, .timestamp = null, .snapshot = snap_new },
+    };
+
+    const view = proj.latestRegisterSnapshot(&events);
+    try std.testing.expectEqual(proj.RegisterSnapshotStatus.present, view.status);
+    try std.testing.expectEqual(@as(?u64, 3), view.snapshot_event_id);
+    try std.testing.expectEqual(@as(?u64, 9), view.captured_at_event_seq);
+    try std.testing.expectEqualStrings("new", view.payload_bytes);
+}
+
+test "projection.latestRegisterSnapshot ignores snapshot events without payload" {
+    const snap = ev.SnapshotPayload{
+        .snapshot_kind = .registers,
+        .source_id = 1,
+        .captured_at_event_seq = 1,
+        .payload = "regs",
+    };
+    const events = [_]ev.Event{
+        .{ .category = .snapshot, .event_id = 1, .timestamp = null, .payload = "not-a-snapshot" },
+        .{ .category = .snapshot, .event_id = 2, .timestamp = null, .snapshot = snap },
+    };
+
+    const view = proj.latestRegisterSnapshot(&events);
+    try std.testing.expectEqual(proj.RegisterSnapshotStatus.present, view.status);
+    try std.testing.expectEqual(@as(?u64, 2), view.snapshot_event_id);
+    try std.testing.expectEqualStrings("regs", view.payload_bytes);
+}

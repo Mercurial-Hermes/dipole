@@ -27,42 +27,34 @@ v0.1.0 establishes Dipole as a **real, usable debugger wrapper**, suitable for e
 
 ---
 
-## 🌿 Milestone 1 — v0.2.0 (Pedagogical Debugger + tmux Screens)
+## 🌿 Milestone 1 — v0.2.x (Pedagogical Debugger Foundations)
 **Status:** In active development
-**Target:** Q1 2026
-**Tag:** v0.2.0
+**Target:** 2026
+**Tags:** v0.2.0 → v0.2.3
 Dipole evolves from a thin wrapper into a **guided, screen-oriented debugger** optimised for learning.
 
 ### Core Theme
 **Screen real estate as pedagogy**
-v0.2.0 focuses on multi-pane workflows, clarity of state, and ergonomic insight — while continuing to wrap LLDB under the hood.
+v0.2.x focuses on multi-pane workflows, clarity of state, and ergonomic insight — while continuing to wrap LLDB under the hood.
 
 ### Goals
 - Brokered architecture:
   - single controller owns LLDB PTY
   - serialized command execution
-  - explicit session state (`Stopped / Running / Exited`)
-- tmux as a first-class UI surface
-  - Multiple panes driven by derived state:
-    - registers
-    - disassembly around PC
-    - “where am I” (PC, symbol, source)
-    - optional memory views
-- Stop-driven refresh model (on step / breakpoint / signal)
-- Expanded LLDB command surface:
-  - breakpoints lifecycle
-  - run / attach / restart / kill
-  - instruction stepping (si/ni/finish)
-  - thread and frame navigation
-- Clear failure semantics when LLDB exits
+  - explicit session lifecycle (start → interact → quit)
+- v0.2.2: honest probe model (raw observation, no interpretation)
+- v0.2.3: one long-lived LLDB session per Dipole session
+  - Dipole-owned REPL in the left tmux pane
+  - LLDB never visible to the user
+  - raw LLDB output preserved in logs only
+  - right panes are view-only (starting with registers)
 
 ### Deliverables
-- `v0.2.0-alpha` → broker skeleton + REPL client
-- `v0.2.0-beta` → tmux layouts + live viewer panes
-- `v0.2.0` → stable pedagogical workflows
+- `v0.2.2` → probe model with strict event admission and raw output logging
+- `v0.2.3` → long-lived session + Dipole REPL + view-only panes
 - Updated architecture and dev-log documentation
 
-v0.2.0 is the first version where Dipole’s UX meaningfully exceeds raw LLDB for teaching and exploration.
+v0.2.x is the first version where Dipole’s UX meaningfully exceeds raw LLDB for teaching and exploration.
 
 ---
 

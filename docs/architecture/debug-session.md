@@ -44,6 +44,7 @@ A Debug Session may operate in one of two modes.
 - Backed by a debugger (e.g. LLDB)
 - Events are emitted in real time
 - Snapshots are captured selectively
+- A single, long-lived LLDB process is owned for the session lifetime
 - Used for:
   - real debugging
   - exploration
@@ -101,19 +102,17 @@ The session model does not depend on:
 - terminals
 - UI frameworks
 
-Backends emit events.  
-Sessions interpret them.
+Backends emit observations.  
+The Controller admits them as events.  
+The session records them without interpretation.
 
 ---
 
-### Invariant 4 — Semantic First
+### Invariant 4 — Meaning Is Downstream
 
-The purpose of a session is not to mirror debugger output verbatim, but to model **meaningful program behaviour**.
+The session records observed events and snapshots without interpretation.
 
-Examples:
-- why execution stopped
-- what changed since the last stop
-- what matters to a learner
+Meaning is derived downstream in projections and semantic layers.
 
 ---
 
@@ -122,34 +121,22 @@ Examples:
 A Debug Session is responsible for:
 
 1. **Lifecycle Modeling**
-   - created
-   - attached
-   - running
-   - stopped
-   - terminated
+   - start
+   - interact
+   - quit
 
 2. **Event Recording**
    - commands issued
    - backend responses
-   - stop reasons
    - snapshot capture events
 
-3. **State Derivation**
-   - threads
-   - frames
-   - registers
-   - symbols
-   - breakpoints
+3. **Snapshot Recording**
+   - append snapshot events with raw payloads
+   - preserve ordering and anchors
 
-4. **Snapshot Management**
-   - capture at semantic moments
-   - preserve historical states
-   - enable comparison and replay
-
-5. **Semantic Derivation**
-   - identify deltas
-   - attach causal explanations
-   - support pedagogy
+4. **Ordering Guarantees**
+   - monotonic event sequence
+   - immutable history
 
 ---
 

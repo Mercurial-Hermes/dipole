@@ -1,3 +1,5 @@
+// cmd/dipole/cli/attach_session.zig
+
 const std = @import("std");
 const attach_session_impl = @import("attach_session_impl");
 const pane_runtime = @import("pane_runtime");
@@ -68,5 +70,12 @@ pub fn runAttachPane(
     source_id: u32,
     role: PaneRole,
 ) !void {
-    try pane_runtime.runPane(cmd_fd, out_fd, source_id, role, null);
+    try pane_runtime.runPane(
+        std.heap.page_allocator,
+        cmd_fd,
+        out_fd,
+        source_id,
+        role,
+        null,
+    );
 }

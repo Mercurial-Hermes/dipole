@@ -100,6 +100,7 @@ Characteristics:
 - the event stream is open-ended
 - execution control commands are meaningful
 - ordering reflects observation, not determinism
+- a single, long-lived LLDB process is owned per Dipole session
 
 Implementation invariant: LLDB PTY I/O is owned by a single broker loop.
 UI panes and helpers must not read or write the PTY directly.

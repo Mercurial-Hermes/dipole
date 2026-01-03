@@ -19,8 +19,9 @@ This document bridges:
 - `interaction-flow.md`
 - `semantic-derivation.md`
 
-Implementation note: the current tmux/REPL work is broker-driven and raw.
-Panes are dumb terminals wired to the broker and must not access LLDB directly.
+Implementation note: in v0.2.3, tmux panes are view-only subscribers and the
+Dipole REPL is the sole command interface. Raw LLDB output is logged only and
+never rendered to the user.
 
 ---
 
@@ -85,7 +86,7 @@ A Subscriber:
 - declares interest in a semantic projection
 - receives updates when derived meaning changes
 - never issues debugger commands
-- never reads raw events directly (unless explicitly permitted)
+- never reads raw events directly
 
 A Subscriber has no knowledge of:
 - the Controller

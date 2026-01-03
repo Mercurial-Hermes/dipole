@@ -1,3 +1,5 @@
+//cmd/dipole/ui/tmux_session.zig
+
 const std = @import("std");
 
 pub const TmuxError = error{
@@ -11,7 +13,8 @@ pub fn runTmuxSession(
     allocator: std.mem.Allocator,
     session_name: []const u8,
     exe_path: []const u8,
-    cmd_fd: std.posix.fd_t,
+    cmd_left_fd: std.posix.fd_t,
+    cmd_right_fd: std.posix.fd_t,
     out_left_fd: std.posix.fd_t,
     out_right_fd: std.posix.fd_t,
     source_left_id: u32,
@@ -26,8 +29,10 @@ pub fn runTmuxSession(
     const kill_term = tmux_kill.spawnAndWait() catch return TmuxError.TmuxRequired;
     _ = kill_term;
 
-    const cmd_fd_str = try std.fmt.allocPrint(allocator, "{d}", .{cmd_fd});
-    defer allocator.free(cmd_fd_str);
+    const cmd_left_str = try std.fmt.allocPrint(allocator, "{d}", .{cmd_left_fd});
+    defer allocator.free(cmd_left_str);
+    const cmd_right_str = try std.fmt.allocPrint(allocator, "{d}", .{cmd_right_fd});
+    defer allocator.free(cmd_right_str);
     const out_left_str = try std.fmt.allocPrint(allocator, "{d}", .{out_left_fd});
     defer allocator.free(out_left_str);
     const out_right_str = try std.fmt.allocPrint(allocator, "{d}", .{out_right_fd});
@@ -47,7 +52,7 @@ pub fn runTmuxSession(
             exe_path,
             "attach-pane",
             "--cmd-fd",
-            cmd_fd_str,
+            cmd_left_str,
             "--out-fd",
             out_left_str,
             "--source-id",
@@ -70,7 +75,7 @@ pub fn runTmuxSession(
             exe_path,
             "attach-pane",
             "--cmd-fd",
-            cmd_fd_str,
+            cmd_right_str,
             "--out-fd",
             out_right_str,
             "--source-id",
@@ -82,6 +87,9 @@ pub fn runTmuxSession(
     );
     const split_term = tmux_split.spawnAndWait() catch return TmuxError.TmuxRequired;
     if (split_term != .Exited or split_term.Exited != 0) return TmuxError.TmuxSplitFailed;
+
+    if (cmd_left_fd >= 0) _ = std.posix.close(cmd_left_fd);
+    if (cmd_right_fd >= 0) _ = std.posix.close(cmd_right_fd);
 
     var tmux_attach = std.process.Child.init(
         &.{ "tmux", "attach-session", "-t", session_name },

@@ -214,6 +214,7 @@ UI must never:
 - emit events directly
 - read or write debugger transports
 - embed assumptions about execution sources
+- render raw LLDB output to the user
 
 UI is a **consumer of truth**, not a producer.
 

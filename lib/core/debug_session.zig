@@ -7,6 +7,7 @@
 const std = @import("std");
 const EventMod = @import("event");
 pub const Event = EventMod.Event;
+pub const SnapshotKind = EventMod.SnapshotKind;
 
 pub const DebugSession = struct {
     allocator: std.mem.Allocator,
@@ -29,12 +30,29 @@ pub const DebugSession = struct {
                 payload_copy = try allocator.dupe(u8, e.payload);
                 owned = true;
             }
+            var snapshot_copy: ?EventMod.SnapshotPayload = null;
+            if (e.snapshot) |snap| {
+                var snap_payload: []const u8 = &.{};
+                var snap_owned = false;
+                if (snap.payload.len > 0) {
+                    snap_payload = try allocator.dupe(u8, snap.payload);
+                    snap_owned = true;
+                }
+                snapshot_copy = EventMod.SnapshotPayload{
+                    .snapshot_kind = snap.snapshot_kind,
+                    .source_id = snap.source_id,
+                    .captured_at_event_seq = snap.captured_at_event_seq,
+                    .payload = snap_payload,
+                    .payload_owned = snap_owned,
+                };
+            }
             try session.events.append(allocator, .{
                 .event_id = e.event_id,
                 .category = e.category,
                 .timestamp = e.timestamp,
                 .payload = payload_copy,
                 .payload_owned = owned,
+                .snapshot = snapshot_copy,
             });
         }
         return session;
@@ -44,6 +62,11 @@ pub const DebugSession = struct {
         for (self.events.items) |e| {
             if (e.payload_owned and e.payload.len > 0) {
                 self.allocator.free(e.payload);
+            }
+            if (e.snapshot) |snap| {
+                if (snap.payload_owned and snap.payload.len > 0) {
+                    self.allocator.free(snap.payload);
+                }
             }
         }
         self.events.deinit(self.allocator);
@@ -78,6 +101,33 @@ pub const DebugSession = struct {
             .payload = payload,
             .payload_owned = true,
         });
+    }
+
+    pub fn appendSnapshot(
+        self: *DebugSession,
+        snapshot_kind: SnapshotKind,
+        source_id: u32,
+        captured_at_event_seq: u64,
+        payload: []const u8,
+    ) !void {
+        const event_id = self.events.items.len;
+        const payload_copy = if (payload.len > 0) try self.allocator.dupe(u8, payload) else &.{};
+        try self.events.append(self.allocator, .{
+            .event_id = event_id,
+            .category = .snapshot,
+            .timestamp = null,
+            .snapshot = EventMod.SnapshotPayload{
+                .snapshot_kind = snapshot_kind,
+                .source_id = source_id,
+                .captured_at_event_seq = captured_at_event_seq,
+                .payload = payload_copy,
+                .payload_owned = payload.len > 0,
+            },
+        });
+    }
+
+    pub fn nextEventSeq(self: *const DebugSession) u64 {
+        return self.events.items.len;
     }
 
     /// Immutable view of the event log.
