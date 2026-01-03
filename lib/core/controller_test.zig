@@ -259,6 +259,7 @@ test "controller emits snapshot only after exec commands" {
     const snap = events[2].snapshot orelse return error.ExpectedSnapshot;
     try std.testing.expectEqual(@as(u64, 1), snap.captured_at_event_seq);
     try std.testing.expectEqual(@as(usize, 0), snap.payload.len);
+    try std.testing.expectEqual(ev.SnapshotKind.registers, snap.snapshot_kind);
 }
 
 test "controller does not emit snapshot for non-exec commands" {
@@ -303,4 +304,53 @@ test "controller does not emit snapshot for non-exec commands" {
     const events = session.eventsView();
     try std.testing.expectEqual(@as(usize, 1), events.len);
     try std.testing.expectEqual(ev.Category.command, events[0].category);
+}
+
+test "controller emits snapshot for explicit register request" {
+    const alloc = std.testing.allocator;
+
+    var session = dbs.DebugSession.init(alloc);
+    defer session.deinit();
+
+    const observations = [_]drv.DriverObservation{};
+    var fake = FakeDriver.init(alloc, &observations);
+    defer fake.deinit();
+
+    const driver = drv.Driver{
+        .ctx = &fake,
+        .send = fakeSend,
+        .poll = fakePoll,
+    };
+
+    var controller = ctl.Controller.init(
+        alloc,
+        &session,
+        driver,
+    );
+
+    var cmd_fds = try std.posix.pipe();
+    defer {
+        if (cmd_fds[0] >= 0) _ = std.posix.close(cmd_fds[0]);
+        if (cmd_fds[1] >= 0) _ = std.posix.close(cmd_fds[1]);
+    }
+    const pty_fds = try std.posix.pipe();
+    defer {
+        if (pty_fds[0] >= 0) _ = std.posix.close(pty_fds[0]);
+        if (pty_fds[1] >= 0) _ = std.posix.close(pty_fds[1]);
+    }
+
+    try writeEnvelopeRaw(cmd_fds[1], 1, "register read\n");
+    _ = std.posix.close(cmd_fds[1]);
+    cmd_fds[1] = -1;
+
+    _ = try controller.drainOnce(cmd_fds[0], &.{}, pty_fds[0]);
+
+    const events = session.eventsView();
+    try std.testing.expectEqual(@as(usize, 2), events.len);
+    try std.testing.expectEqual(ev.Category.command, events[0].category);
+    try std.testing.expectEqual(ev.Category.snapshot, events[1].category);
+
+    const snap = events[1].snapshot orelse return error.ExpectedSnapshot;
+    try std.testing.expectEqual(ev.SnapshotKind.registers, snap.snapshot_kind);
+    try std.testing.expectEqual(@as(u64, 0), snap.captured_at_event_seq);
 }

@@ -69,6 +69,10 @@ pub const Controller = struct {
             std.mem.eql(u8, payload, "process continue\n");
     }
 
+    fn isSnapshotCommand(payload: []const u8) bool {
+        return std.mem.eql(u8, payload, "register read\n");
+    }
+
     fn ingestDriverCapture(self: *Controller, out_write_fds: []posix.fd_t, capture: *std.ArrayList(u8)) !void {
         while (self.driver.poll(self.driver.ctx)) |obs| {
             switch (obs) {
@@ -89,12 +93,19 @@ pub const Controller = struct {
         }
     }
 
-    fn emitRegisterSnapshot(self: *Controller, source_id: u32, out_write_fds: []posix.fd_t) !void {
+    fn emitRegisterSnapshot(
+        self: *Controller,
+        source_id: u32,
+        out_write_fds: []posix.fd_t,
+        append_command: bool,
+    ) !void {
         try self.ingestDriver(out_write_fds);
         const cmd = "register read\n";
         try self.driver.send(self.driver.ctx, cmd);
-        const cmd_payload = try self.allocator.dupe(u8, cmd);
-        try self.session.appendWithPayload(.command, cmd_payload);
+        if (append_command) {
+            const cmd_payload = try self.allocator.dupe(u8, cmd);
+            try self.session.appendWithPayload(.command, cmd_payload);
+        }
 
         var capture = std.ArrayList(u8).init(self.allocator);
         defer capture.deinit();
@@ -135,11 +146,22 @@ pub const Controller = struct {
                 };
                 if (env) |e| {
                     const exec_cmd = isExecCommand(e.payload);
-                    errdefer self.allocator.free(e.payload);
-                    try self.driver.send(self.driver.ctx, e.payload);
-                    try self.session.appendWithPayload(.command, e.payload);
-                    if (exec_cmd) {
-                        try self.emitRegisterSnapshot(e.source_id, out_write_fds);
+                    const snapshot_cmd = isSnapshotCommand(e.payload);
+                    if (snapshot_cmd) {
+                        {
+                            errdefer self.allocator.free(e.payload);
+                            try self.session.appendWithPayload(.command, e.payload);
+                        }
+                        try self.emitRegisterSnapshot(e.source_id, out_write_fds, false);
+                    } else {
+                        {
+                            errdefer self.allocator.free(e.payload);
+                            try self.driver.send(self.driver.ctx, e.payload);
+                            try self.session.appendWithPayload(.command, e.payload);
+                        }
+                        if (exec_cmd) {
+                            try self.emitRegisterSnapshot(e.source_id, out_write_fds, true);
+                        }
                     }
                 } else {
                     cmd_closed = true;
@@ -183,11 +205,22 @@ pub const Controller = struct {
                 };
                 if (env) |e| {
                     const exec_cmd = isExecCommand(e.payload);
-                    errdefer self.allocator.free(e.payload);
-                    try self.driver.send(self.driver.ctx, e.payload);
-                    try self.session.appendWithPayload(.command, e.payload);
-                    if (exec_cmd) {
-                        try self.emitRegisterSnapshot(e.source_id, out_write_fds);
+                    const snapshot_cmd = isSnapshotCommand(e.payload);
+                    if (snapshot_cmd) {
+                        {
+                            errdefer self.allocator.free(e.payload);
+                            try self.session.appendWithPayload(.command, e.payload);
+                        }
+                        try self.emitRegisterSnapshot(e.source_id, out_write_fds, false);
+                    } else {
+                        {
+                            errdefer self.allocator.free(e.payload);
+                            try self.driver.send(self.driver.ctx, e.payload);
+                            try self.session.appendWithPayload(.command, e.payload);
+                        }
+                        if (exec_cmd) {
+                            try self.emitRegisterSnapshot(e.source_id, out_write_fds, true);
+                        }
                     }
                 } else {
                     return true;

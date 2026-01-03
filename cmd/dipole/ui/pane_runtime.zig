@@ -131,6 +131,16 @@ pub fn parseReplLine(
         const cmd = try allocator.dupe(u8, "process continue\n");
         return .{ .command = cmd };
     }
+    if (std.mem.eql(u8, verb, "regs")) {
+        const cmd = try allocator.dupe(u8, "register read\n");
+        return .{ .command = cmd };
+    }
+    if (std.mem.eql(u8, verb, "snapshot")) {
+        const arg = it.next() orelse return null;
+        if (!std.mem.eql(u8, arg, "regs")) return null;
+        const cmd = try allocator.dupe(u8, "register read\n");
+        return .{ .command = cmd };
+    }
     if (std.mem.eql(u8, verb, "b") or std.mem.eql(u8, verb, "breakpoint")) {
         const arg0 = it.next() orelse return null;
         const arg = if (std.mem.eql(u8, arg0, "set")) (it.next() orelse return null) else arg0;
